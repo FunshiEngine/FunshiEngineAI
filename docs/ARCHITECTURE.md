@@ -36,7 +36,7 @@ FunshiEngineAI/
 - **llama.cpp**: Clonado (`git clone --depth 1`), checkout, build opcional (`cmake`), autodetección binario
 - **Servidor local**: `LocalServerManager` — escaneo de puertos libres (B-11), health polling, tail de logs en errores
 - **Gateway**: `OpenAiCompatibleGateway` — streaming SSE, timeouts configurables
-- **Validación fail-fast**: `LlmConfig.validate()` antes de tocar red/procesos (estilo SAI `config/validate.ts`)
+- **Validación fail-fast**: `LlmConfig.validate()` antes de tocar red/procesos
 ---
 
 ## Flujo de Datos Principal
@@ -122,7 +122,7 @@ Archivo: <app-home>/config/app-config.json
 
 ---
 
-## Manejo de Errores (Estilo SAI)
+## Manejo de Errores
 
 ```kotlin
 sealed class LlmErrorCode {

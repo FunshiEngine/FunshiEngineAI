@@ -92,7 +92,7 @@
 - Gestión modelos: catálogo HF, descarga streaming + reanudación
 - Config persistida JSON + system prompt + carpeta docs internas
 - Tema dinámico claro/oscuro + color acento
-- Validación fail-fast estilo SAI (`LlmConfig.validate()`)
+- Validación fail-fast (`LlmConfig.validate()`)
 
 ---
 

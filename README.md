@@ -63,7 +63,7 @@ Todo se configura en `app-home/config/app-config.json` (se crea solo en el prime
     "gpuLayers": 0,                   // >0 si tienes GPU con VRAM suficiente
     "temperature": 0.2,
     "maxTokens": 1024,
-    "chatTimeoutMs": 90000,         // timeout por petición (como SAI)
+    "chatTimeoutMs": 90000,         // timeout por petición
     "loadTimeoutMs": 180000,        // espera máxima a llama-server
     "llamaServerPath": "",          // vacío = autodetecta (clon compilado → PATH)
     "llamaRepoUrl": "https://github.com/ggml-org/llama.cpp.git",
@@ -98,7 +98,7 @@ El front tiene 4 pantallas (pestañas **Chat / Modelos / APIs / Estado**):
 
 **Modelo local por defecto**: `Phi-4-mini-instruct-Q4_K_M.gguf`
 (`https://huggingface.co/unsloth/Phi-4-mini-instruct-GGUF/resolve/main/Phi-4-mini-instruct-Q4_K_M.gguf`,
-~2.4 GB) — el mismo que usa SAI; se descarga solo al primer arranque, con reanudación si se corta.
+~2.4 GB) — rápido y bueno en español; se descarga solo al primer arranque, con reanudación si se corta.
 
 **Requisitos**: JDK 21, Gradle, y `llama-server` de llama.cpp en el PATH (o indicar la ruta en
 `llm.llamaServerPath`).
@@ -115,8 +115,7 @@ En desarrollo todo (config, modelos, docs internas) vive en `<raíz>/app-home`.
 
 - [x] Chat local con streaming + RAG (BM25) sobre GitHub y docs internas.
 - [x] Descarga del modelo con reanudación y arranque de `llama-server`.
-- [x] Validación estricta de config, errores tipados y robustez del servidor local
-      (mejoras tomadas del backend de SAI — detalle en `.agentes/plan-sai-vs-funshi.md`).
+- [x] Validación estricta de config, errores tipados y robustez del servidor local.
 - [ ] Manual de uso del FunshiEngine como fuente RAG.
 - [ ] Verificador determinista de citas (script post-generación).
-- [ ] Fallback local↔remoto con circuit breaker (patrón de SAI) si se habilita modo dual.
+- [ ] Fallback local↔remoto con circuit breaker si se habilita modo dual.

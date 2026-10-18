@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit
 /**
  * Levanta/baja `llama-server` (llama.cpp) en localhost.
  *
- * Mejoras tomadas del backend de SAI (`LlamaCppServerManager.ts` + `portPolicy.ts`):
+ * Mejoras sobre un servidor básico:
  *  - Si el puerto configurado está ocupado, escanea los siguientes (rango de 20)
  *    hasta encontrar uno libre (B-11) — en vez de morir con "address in use".
  *  - Autodetecta el binario (`llama-server[.exe]` según plataforma).
@@ -75,7 +75,7 @@ class LocalServerManager(private val cfg: LlmConfig, private val logDir: Path) {
         Files.createDirectories(logDir)
         val log = logDir.resolve("llama-server.log")
 
-        // B-11 (SAI): escanea puertos libres si el configurado está tomado.
+        // B-11: escanea puertos libres si el configurado está tomado.
         val port = findFreePort(cfg.localPort, PORT_SCAN_SPAN)
             ?: throw LlmException(
                 LlmErrorCode.SERVIDOR_CAIDO,
@@ -137,7 +137,7 @@ class LocalServerManager(private val cfg: LlmConfig, private val logDir: Path) {
                 onSetup(LlamaSetupProgress(LlamaSetupStage.START, pct, s))
                 lastStatus = s
             }
-            delay(300) // poll 300 ms, como SAI
+            delay(300) // poll de salud cada 300 ms
         }
         throw LlmException(
             LlmErrorCode.MODELO_NO_DISPONIBLE,
@@ -149,7 +149,7 @@ class LocalServerManager(private val cfg: LlmConfig, private val logDir: Path) {
     fun stop() {
         val p = process ?: return
         process = null
-        // Espera graceful (patrón SAI): destruir y esperar antes de forzar.
+        // Espera graceful: destruir y esperar antes de forzar.
         p.destroy()
         try {
             if (!p.waitFor(3, TimeUnit.SECONDS)) {
@@ -166,8 +166,8 @@ class LocalServerManager(private val cfg: LlmConfig, private val logDir: Path) {
     }
 
     /**
-     * Mata el árbol de procesos (patrón SAI: en Windows `destroy()` no alcanza
-     * a los hijos que cuelgan del servidor — SAI usa `taskkill /T /F`).
+     * Mata el árbol de procesos (en Windows `destroy()` no alcanza
+     * a los hijos que cuelgan del servidor — se usa `taskkill /T /F`).
      */
     private fun killTree(p: Process) {
         try {
@@ -201,7 +201,7 @@ class LocalServerManager(private val cfg: LlmConfig, private val logDir: Path) {
 
     /**
      * Binario a ejecutar:
-     * 1. `llamaServerPath` explícita si existe (patrón `resolveBinary()` de SAI).
+     * 1. `llamaServerPath` explícita si existe.
      * 2. Binario compilado dentro del clon (`LlamaManager`).
      * 3. `llama-server[.exe]` del PATH (Windows necesita el sufijo).
      */
@@ -223,7 +223,7 @@ class LocalServerManager(private val cfg: LlmConfig, private val logDir: Path) {
             return withExe
         }
         // Sin ruta explícita: si hay clon compilado (o se puede compilar), va
-        // primero — igual que SAI busca en el repo antes de rendirse.
+        // primero — se busca en el repo antes de rendirse.
         val manager = LlamaManager(cfg, logDir.parent ?: java.nio.file.Paths.get("."))
         try {
             return manager.ensureReady(onSetup)
@@ -236,7 +236,7 @@ class LocalServerManager(private val cfg: LlmConfig, private val logDir: Path) {
         return "llama-server$exe"
     }
 
-    /** Últimas líneas del log para incluir en errores (tail, como SAI). */
+    /** Últimas líneas del log para incluir en errores (tail). */
     private fun logTail(log: Path, maxLines: Int = 12, maxBytes: Long = 4096): String = try {
         if (!Files.exists(log)) {
             "(log vacío)"
@@ -262,7 +262,7 @@ class LocalServerManager(private val cfg: LlmConfig, private val logDir: Path) {
     }
 
     companion object {
-        /** Cuántos puertos consecutivos se prueban desde el configurado (B-11 de SAI). */
+        /** Cuántos puertos consecutivos se prueban desde el configurado (B-11). */
         const val PORT_SCAN_SPAN = 20
     }
 }

@@ -7,7 +7,7 @@ import java.nio.file.Path
  * Fachada de la API intermedia: según la config, prepara el modelo local
  * (descarga + localhost) o apunta a una API remota, y devuelve un [LlmGateway].
  *
- * Validación fail-fast al estilo SAI (`config/validate.ts`): la config se
+ * Validación fail-fast: la config se
  * valida antes de tocar red o procesos, con todos los problemas listados.
  *
  * La config se lee en cada arranque vía [state] (fuente de verdad = ViewModel).
@@ -83,7 +83,7 @@ class LlmService(private val state: () -> LlmConfig, private val baseDir: Path) 
     companion object {
         /**
          * Reintenta un bloque que falló con [LlmException] reintentable
-         * (patrón `ApiEngine` de SAI: hasta 2 reintentos, backoff 300→600 ms).
+         * (hasta 2 reintentos, backoff 300→600 ms).
          * Los errores deterministas (clave, cuota, config) no se reintentan.
          */
         private suspend fun <T> retryTransient(what: String, block: suspend () -> T): T {

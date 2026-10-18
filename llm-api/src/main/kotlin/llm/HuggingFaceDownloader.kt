@@ -51,16 +51,15 @@ data class HfRepoHit(
  * Descarga de archivos de Hugging Face con streaming por chunks, reanudación
  * (.part + Range) y lock por archivo.
  *
- * Técnica anti-ArrayBuffer (revisada contra SAI `modelDownloadLock.ts`):
- * SAI lee el body con `reader.read()` y escribe cada chunk al archivo con un
- * file handle — nunca acumula el modelo en memoria. Acá hacemos lo mismo:
- * el canal de Ktor se lee de a 64 KB (`readAvailable`) directo al
+ * Técnica anti-ArrayBuffer: el body se lee con `reader.read()`/`readAvailable`
+ * y se escribe cada chunk al archivo con un file handle — nunca se acumula el
+ * modelo en memoria. El canal de Ktor se lee de a 64 KB directo al
  * `FileOutputStream` del `.part`, sin `bodyAsText()`/`readBytes()` que
  * cargarían los GB en RAM (ese es el "array buffer problema": con modelos de
  * 2+ GB, un buffer completo revienta la memoria).
  *
- * Además: reanudación con `Range: bytes=<ya-descargado>-` (SAI no la tiene:
- * borra el `.download` y empieza de cero), chequeo de integridad con
+ * Además: reanudación con `Range: bytes=<ya-descargado>-` (si se corta,
+ * continúa donde estaba), chequeo de integridad con
  * `Content-Length`, y errores tipados.
  */
 class HuggingFaceDownloader(private val token: String = "") {

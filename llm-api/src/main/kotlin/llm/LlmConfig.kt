@@ -53,14 +53,14 @@ data class LlmConfig(
     val modelName: String = "phi-4-mini",
 
     // ---- LOCAL ----
-    // Modelo por defecto: el mismo que usa SAI (Phi-4-mini-instruct Q4_K_M).
+    // Modelo por defecto: Phi-4-mini-instruct Q4_K_M, rápido y bueno en español.
     val hfRepo: String = "unsloth/Phi-4-mini-instruct-GGUF",
     val hfFile: String = "Phi-4-mini-instruct-Q4_K_M.gguf",
     val hfToken: String = "",
     val modelsDir: String = "models",
     /** Ruta al binario; vacío = autodetectar (`llama-server[.exe]` en PATH y candidatos). */
     val llamaServerPath: String = "",
-    /** Repo git de llama.cpp a clonar (como SAI_LLM_LOCALHOST_REPO_URL de SAI). */
+    /** Repo git de llama.cpp a clonar. */
     val llamaRepoUrl: String = "https://github.com/ggml-org/llama.cpp.git",
     /** Rama/tag a clonar (vacío = HEAD por defecto). */
     val llamaRepoVersion: String = "",
@@ -70,7 +70,7 @@ data class LlmConfig(
     val gitBin: String = "git",
     /**
      * true = clonar/compilar `llama-server` con cmake si todavía no está clonado
-     * o compilado (SAI_LLM_LOCALHOST_BUILD). Por defecto activo: sin él el arranque
+     * o compilado. Por defecto activo: sin él el arranque
      * local falla la primera vez en una máquina sin llama.cpp.
      */
     val buildFromSource: Boolean = true,
@@ -91,7 +91,7 @@ data class LlmConfig(
     val temperature: Double = 0.2,
     val maxTokens: Int = 1024,
 
-    // ---- Timeouts (ms) — como en SAI: chat 90 s, carga 120 s ----
+    // ---- Timeouts (ms) — chat 90 s, carga 180 s ----
     /** Timeout de cada petición de chat (STREAM incluido). */
     val chatTimeoutMs: Long = 90_000,
     /** Espera máxima a que `llama-server` esté sano tras arrancarlo. */
@@ -131,7 +131,7 @@ data class LlmConfig(
 
     /**
      * Valida la config resuelta y devuelve los problemas (vacío = válida).
-     * Inspirado en `config/validate.ts` de SAI: falla rápido con un mensaje claro
+     * Enfoque fail-fast: falla rápido con un mensaje claro
      * en vez de quedar a medio configurar (B-23).
      */
     fun validate(): List<String> {
@@ -164,7 +164,7 @@ data class LlmConfig(
                 errors += "Modo REMOTE: falta llm.modelName (el nombre del modelo del proveedor, " +
                     "ej. gpt-4o-mini)."
             } else if (apiKey.isBlank() && !isLocalhostUrl(remoteBaseUrl)) {
-                // Patrón ApiEngine de SAI: la API remota exige clave; los endpoints
+                // Patrón de APIs: la API remota exige clave; los endpoints
                 // localhost (Ollama/LM Studio/llama-server) funcionan sin ella.
                 errors += "Modo REMOTE: falta llm.apiKey para $remoteBaseUrl (los endpoints " +
                     "localhost no la necesitan)."
@@ -174,9 +174,9 @@ data class LlmConfig(
     }
 
     companion object {
-        /** Mínimo de contexto razonable (igual que SAI). */
+        /** Mínimo de contexto razonable. */
         const val MIN_CONTEXT = 128
-        /** Máximo de contexto — SAI valida hasta 40 960; llama-server puede más, pero acotamos. */
+        /** Máximo de contexto — llama-server puede más, pero acotamos a 40 960. */
         const val MAX_CONTEXT = 40_960
         /**
          * Versión actual del esquema de config.
@@ -186,14 +186,14 @@ data class LlmConfig(
         const val CURRENT_CONFIG_VERSION = 2
 
         /**
-         * Catálogo inicial: el Phi-4-mini de SAI (el que ya usamos) + dos
+         * Catálogo inicial: el Phi-4-mini (el por defecto) + dos
          * alternativas GGUF populares del mismo formato. El usuario puede
          * agregar más desde la pantalla de modelos (se guardan en la config).
          */
         fun defaultModelCatalog(): List<ModelPreset> = listOf(
             ModelPreset(
                 id = "phi-4-mini",
-                label = "Phi-4-mini-instruct (Q4_K_M) · el de SAI",
+                label = "Phi-4-mini-instruct (Q4_K_M) · el por defecto",
                 repo = "unsloth/Phi-4-mini-instruct-GGUF",
                 file = "Phi-4-mini-instruct-Q4_K_M.gguf",
                 sizeGb = 2.4,

@@ -29,10 +29,10 @@ interface LlmGateway {
 /**
  * Cliente para cualquier endpoint /v1/chat/completions con streaming SSE.
  *
- * Mejoras tomadas del backend de SAI:
+ * Mejoras sobre un cliente básico:
  *  - Errores tipados ([LlmException]) clasificando status HTTP (401→clave,
  *    429→cuota, 400+tokens→contexto, 5xx→servidor) en vez de `error(...)` crudo.
- *  - Timeout por petición (`chatTimeoutMs`, 90 s como SAI) sobre el flujo completo,
+ *  - Timeout por petición (`chatTimeoutMs`, 90 s) sobre el flujo completo,
  *    para que un servidor colgado no deje la petición zombi.
  */
 class OpenAiCompatibleGateway(
@@ -116,7 +116,7 @@ class OpenAiCompatibleGateway(
             }
         }
 
-        // Timeout total por petición (patrón de timeouts de SAI), también en streaming.
+        // Timeout total por petición, también en streaming.
         // El timeout se reporta como TIMEOUT y los fallos de transporte como
         // MODELO_NO_DISPONIBLE/SERVIDOR_CAIDO (nunca como error crudo).
         try {

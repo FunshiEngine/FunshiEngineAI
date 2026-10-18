@@ -9,15 +9,14 @@ import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
-/** Fase del aprovisionamiento de `llama-server` (clonado/compilado), réplica de LlamaCppProgress de SAI. */
+/** Fase del aprovisionamiento de `llama-server` (clonado/compilado). */
 enum class LlamaSetupStage { CLONE, BUILD, DOWNLOAD, START }
 
 /** Progreso del aprovisionamiento: etapa + porcentaje (null = indeterminado) + mensaje. */
 data class LlamaSetupProgress(val stage: LlamaSetupStage, val percent: Int?, val message: String)
 
 /**
- * Clonado + compilado del repo llama.cpp, réplica de la técnica de
- * `LlamaCppServerManager.ts` (SAI):
+ * Clonado + compilado del repo llama.cpp:
  *
  * - `git clone --depth 1 [--branch <v>]` con progreso parseado de stderr
  *   (`Receiving objects: NN%`); reintenta sin `--depth 1` si falla (B-16).
@@ -28,7 +27,7 @@ data class LlamaSetupProgress(val stage: LlamaSetupStage, val percent: Int?, val
  *   `cmake --build build --config Release -j<N>` con progreso por líneas de
  *   compilación (`[NN%]`/`[NN/NN]`), timeout 20 min.
  * - `ensureReady()`: cadena global contra clonados concurrentes
- *   (como `repoSetupChain` de SAI).
+ *   (un mutex por directorio de repo).
  *
  * Importante: nada de esto se ejecuta si ya hay binario (no se re-clona ni se
  * recompila en cada arranque) — sólo se clona si falta el `.git` y sólo se
@@ -60,7 +59,7 @@ class LlamaManager(private val cfg: LlmConfig, private val baseDir: Path) {
     /**
      * Garantiza `llama-server` ejecutable: ruta explícita → binario ya compilado
      * → clonar (sólo si no hay clon) → compilar (sólo si [LlmConfig.buildFromSource]
-     * y no hay binario) — igual que `LlamaCppServerManager.ensureBinary()` de SAI.
+     * y no hay binario).
      */
     suspend fun ensureReady(onProgress: (LlamaSetupProgress) -> Unit = {}): String =
         chainFor(repoDir()).withLock {
@@ -134,7 +133,7 @@ class LlamaManager(private val cfg: LlmConfig, private val baseDir: Path) {
         }
     }
 
-    // ---- clonado (SAI: cloneRepo) ----
+    // ---- clonado ----
 
     private suspend fun cloneRepo(dir: Path, onProgress: (LlamaSetupProgress) -> Unit) = withContext(Dispatchers.IO) {
         // Chequeo ANTES de clonar: si git no está, avisar en 1 s y no descargar nada.
@@ -155,7 +154,7 @@ class LlamaManager(private val cfg: LlmConfig, private val baseDir: Path) {
                 clonePercent(line)?.let { onProgress(LlamaSetupProgress(LlamaSetupStage.CLONE, it, "Clonando llama.cpp… $it%")) }
             }
         } catch (e: LlmException) {
-            // B-16 de SAI: si el shallow clone falla, reintenta completo.
+            // B-16: si el shallow clone falla, reintenta completo.
             if (!cfg.llamaRepoVersion.isBlank()) throw e
             onProgress(LlamaSetupProgress(LlamaSetupStage.CLONE, null, "El clon superficial falló; reintentando completo…"))
             runGit(listOf("clone", "--progress", repoUrl, dir.toString()), CLONE_TIMEOUT_MS) { line ->
@@ -182,7 +181,7 @@ class LlamaManager(private val cfg: LlmConfig, private val baseDir: Path) {
             .filter { it in 0..100 }
             .maxOrNull()
 
-    // ---- compilado (SAI: buildServerBinary) ----
+    // ---- compilado ----
 
     private suspend fun buildRepo(dir: Path, onProgress: (LlamaSetupProgress) -> Unit): Unit = withContext(Dispatchers.IO) {
         // Chequeo ANTES de compilar: cmake ausente = fallar ya, no tras el clon.
@@ -215,7 +214,7 @@ class LlamaManager(private val cfg: LlmConfig, private val baseDir: Path) {
         val total = m.groupValues[2].toIntOrNull()?.takeIf { it > 0 } ?: return null
         return (done * 100 / total).coerceIn(0, 100)
     }
-    // ---- resolución del binario (SAI: resolveBinary) ----
+    // ---- resolución del binario ----
 
     private fun findRepoBinary(): String? {
         // MSVC (generator "Visual Studio") pone el binario en build/bin/Release/,
@@ -258,7 +257,7 @@ class LlamaManager(private val cfg: LlmConfig, private val baseDir: Path) {
     /**
      * Ejecuta un proceso capturando stdout al log y reportando cada línea de
      * stderr a [onStderr] (de ahí sale el % de git/cmake). Guarda el tail
-     * (últimos 2 KB) para incluirlo en el error, como SAI.
+     * (últimos 2 KB) para incluirlo en el error.
      */
     private fun runProcess(cmd: List<String>, cwd: Path, timeoutMs: Long, log: Path, onStderr: (String) -> Unit = {}) {
         val parent = log.parent ?: cwd

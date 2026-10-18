@@ -1,9 +1,8 @@
 package llm
 
 /**
- * Errores tipados del backend LLM — réplica del patrón de `errors.ts` (SAI):
- * cada error sabe si es reintentable o terminal, para que quien llama decida
- * sin parsear mensajes de texto.
+ * Errores tipados del backend LLM: cada error sabe si es reintentable o
+ * terminal, para que quien llama decida sin parsear mensajes de texto.
  */
 enum class LlmErrorCode {
     /** La API alcanzó su límite de uso (429). */
@@ -48,8 +47,8 @@ class LlmException(
     companion object {
         /**
          * Clasifica una respuesta HTTP fallida de un endpoint OpenAI-compatible
-         * (local o remoto) a un [LlmException], igual que hace SAI con sus motores:
-         * mira status y palabras clave del cuerpo ("context", "kv cache", "tokens").
+         * (local o remoto) a un [LlmException]: mira status y palabras clave
+         * del cuerpo ("context", "kv cache", "tokens").
          */
         fun fromHttp(status: Int, body: String, local: Boolean): LlmException {
             val origin = if (local) "llama-server" else "la API"
@@ -96,7 +95,7 @@ class LlmException(
             is LlmException -> t
             is kotlinx.coroutines.CancellationException -> {
                 // La cancelación de una coroutine también cae aquí; va con
-                // CANCELADO como en SAI (`errors.ts`), para no confundirla con un fallo.
+                // CANCELADO para no confundirla con un fallo.
                 LlmException(LlmErrorCode.CANCELADO, "La generación fue cancelada.", cause = t)
             }
             is java.util.concurrent.TimeoutException ->
