@@ -1,0 +1,71 @@
+package rag
+
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import llm.LlmConfig
+import java.nio.file.Files
+import java.nio.file.Path
+
+val AppJson = Json { prettyPrint = true; ignoreUnknownKeys = true; encodeDefaults = true }
+
+/** Carpeta de trabajo (config, modelos, caché, docs internas). */
+object AppPaths {
+    val home: Path = Path.of(
+        System.getProperty("app.home")
+            ?: System.getenv("DOCS_CHATBOT_HOME")
+            ?: "${System.getProperty("user.home")}/.docs-chatbot"
+    ).toAbsolutePath().normalize()
+
+    fun resolve(p: String): Path = home.resolve(p).normalize()
+}
+
+@Serializable
+data class GithubSource(
+    val owner: String,
+    val repo: String,
+    /** Rama, tag o SHA. Vacío = rama por defecto. */
+    val ref: String = "",
+    /** Prefijos de carpetas a indexar (ej. ["docs/"]). Vacío = todo el repo. */
+    val paths: List<String> = emptyList(),
+    /** Para repos privados. Si está vacío se usa la variable de entorno GITHUB_TOKEN. */
+    val token: String = ""
+)
+
+@Serializable
+data class RagConfig(
+    val githubSources: List<GithubSource> = emptyList(),
+    val internalDocsDirs: List<String> = listOf("internal-docs"),
+    val extensions: List<String> = listOf("md", "mdx", "txt", "rst", "adoc"),
+    val systemPromptFile: String = "config/system_prompt.md",
+    val cacheDir: String = "data/cache",
+    val chunkSize: Int = 1200,
+    val chunkOverlap: Int = 150,
+    val topK: Int = 5,
+    val historyTurns: Int = 6
+)
+
+@Serializable
+data class AppConfig(val llm: LlmConfig = LlmConfig(), val rag: RagConfig = RagConfig()) {
+    companion object {
+        /** Carga la config; si es la primera vez crea config, system prompt y carpeta de docs internas. */
+        fun loadOrCreate(): AppConfig {
+            val file = AppPaths.resolve("config/app-config.json")
+            Files.createDirectories(file.parent)
+            if (!Files.exists(file)) Files.writeString(file, AppJson.encodeToString(AppConfig()))
+
+            val prompt = AppPaths.resolve("config/system_prompt.md")
+            if (!Files.exists(prompt)) {
+                val default = AppConfig::class.java.getResourceAsStream("/default_system_prompt.md")!!.readBytes()
+                Files.write(prompt, default)
+            }
+
+            val internal = AppPaths.resolve("internal-docs")
+            if (!Files.exists(internal)) {
+                Files.createDirectories(internal)
+                Files.writeString(internal.resolve("bienvenida.md"), "# Bienvenida\n\nColoca aquí tus documentos internos (.md, .txt, .rst, .adoc).\n")
+            }
+            return AppJson.decodeFromString(Files.readString(file))
+        }
+    }
+}
