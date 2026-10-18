@@ -8,6 +8,7 @@ import llm.ApiPreset
 import llm.ChatMessage
 import llm.HuggingFaceDownloader
 import llm.LlmException
+import llm.LlmMode
 import llm.LlmService
 import llm.ModelEntry
 import llm.ModelManager
@@ -17,26 +18,6 @@ import rag.AppConfig
 import rag.AppPaths
 import rag.KnowledgeBase
 import rag.RagEngine
-
-data class UiMessage(val role: String, val text: String, val sources: List<String> = emptyList())
-
-/** Pantalla visible: carga inicial, chat, gestor de modelos o colección de APIs. */
-enum class Screen { LOADING, CHAT, MODELS, APIS }
-
-/** Progreso de la descarga/setup visible en la UI (barras). */
-data class UiProgress(
-    val label: String,
-    val doneBytes: Long = 0L,
-    val totalBytes: Long = 0L,
-    /** 0..100, o null si es indeterminado (clonado inicial, compilación). */
-    val percent: Int? = null,
-)
-
-/** Tema elegido por el usuario (persistido en app-config.json). */
-data class AppTheme(
-    val dark: Boolean = false,
-    val accent: Int = 0xFF6200EE.toInt(),
-)
 
 class ChatViewModel {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -92,10 +73,26 @@ class ChatViewModel {
         config = config.copy(llm = config.llm.copy(uiDark = dark, uiAccent = accent)).save()
     }
 
+    /** Modo de inferencia actual (LOCAL o REMOTE). */
+    val configMode: String
+        get() = config.llm.mode.name
+
+    /** Cambia el modo de inferencia y lo persiste. */
+    fun setConfigMode(mode: String) {
+        val newMode = LlmMode.valueOf(mode)
+        config = config.copy(llm = config.llm.copy(mode = newMode)).save()
+        // Si cambia a LOCAL, usaLocal; si cambia a REMOTE, actívate la primera API disponible
+        if (newMode == LlmMode.LOCAL) {
+            useLocal()
+        } else if (config.llm.apiPresets.isNotEmpty()) {
+            activateApi(config.llm.apiPresets[0])
+        }
+    }
+
     fun go(target: Screen) {
         error = ""
         screen = target
-        if (target == Screen.MODELS || target == Screen.APIS) refreshLists()
+        if (target == Screen.MODELS || target == Screen.APIS || target == Screen.SETTINGS) refreshLists()
     }
 
     fun dismissError() {
