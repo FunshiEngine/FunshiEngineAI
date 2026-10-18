@@ -80,6 +80,12 @@ data class LlmConfig(
     val chatTimeoutMs: Long = 90_000,
     /** Espera máxima a que `llama-server` esté sano tras arrancarlo. */
     val loadTimeoutMs: Long = 180_000,
+
+    // ---- UI (tema) ----
+    /** Tema oscuro. */
+    val uiDark: Boolean = false,
+    /** Color de acento en ARGB Int (ej. 0xFF6200EE). */
+    val uiAccent: Int = 0xFF6200EE.toInt(),
 ) {
 
     /**

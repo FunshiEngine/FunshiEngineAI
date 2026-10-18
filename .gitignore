@@ -1,8 +1,8 @@
 .gradle/
 build/
 build-llmapi.log
+build-check.log
+build-all.log
 .idea/
-app-home/models/
-app-home/data/
-app-home/logs/
+app-home/
 .agentes/

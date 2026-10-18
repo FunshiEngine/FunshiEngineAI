@@ -50,7 +50,13 @@ fun ModelsPane(vm: ChatViewModel) {
         item {
             Spacer(Modifier.height(8.dp))
             Text("Agregar modelo de Hugging Face", style = MaterialTheme.typography.titleMedium)
-            OutlinedTextField(value = repo, onValueChange = { repo = it }, label = { Text("Repo (ej. unsloth/Phi-4-mini-instruct-GGUF)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+            OutlinedTextField(
+                value = repo,
+                onValueChange = { repo = it },
+                label = { Text("Repo (ej. unsloth/Phi-4-mini-instruct-GGUF)") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+            )
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedButton(
@@ -69,13 +75,26 @@ fun ModelsPane(vm: ChatViewModel) {
                 }
             }
             Spacer(Modifier.height(8.dp))
-            OutlinedTextField(value = file, onValueChange = { file = it }, label = { Text("Archivo (ej. modelo-Q4_K_M.gguf)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+            OutlinedTextField(
+                value = file,
+                onValueChange = { file = it },
+                label = { Text("Archivo (ej. modelo-Q4_K_M.gguf)") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+            )
             Spacer(Modifier.height(8.dp))
-            OutlinedTextField(value = label, onValueChange = { label = it }, label = { Text("Etiqueta (opcional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+            OutlinedTextField(
+                value = label,
+                onValueChange = { label = it },
+                label = { Text("Etiqueta (opcional)") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+            )
             Spacer(Modifier.height(8.dp))
-            Button(onClick = { vm.addModel(repo, file, label); file = ""; }, enabled = repo.isNotBlank() && file.isNotBlank()) {
-                Text("Agregar al catálogo")
-            }
+            Button(
+                onClick = { vm.addModel(repo, file, label); file = "" },
+                enabled = repo.isNotBlank() && file.isNotBlank(),
+            ) { Text("Agregar al catálogo") }
         }
     }
 }

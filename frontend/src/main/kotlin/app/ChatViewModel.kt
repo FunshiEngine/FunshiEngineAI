@@ -32,6 +32,12 @@ data class UiProgress(
     val percent: Int? = null,
 )
 
+/** Tema elegido por el usuario (persistido en app-config.json). */
+data class AppTheme(
+    val dark: Boolean = false,
+    val accent: Int = 0xFF6200EE.toInt(),
+)
+
 class ChatViewModel {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var config = AppConfig.loadOrCreate()
@@ -67,10 +73,23 @@ class ChatViewModel {
         private set
     var activeModelLabel by mutableStateOf("")
         private set
+    /** Tema oscuro (persistido en app-config.json). */
+    var isDark by mutableStateOf(config.llm.uiDark)
+        private set
+    /** Color de acento en ARGB Int (persistido en app-config.json). */
+    var accentColor by mutableStateOf(config.llm.uiAccent)
+        private set
 
     init {
         refreshLists()
         scope.launch { boot() }
+    }
+
+    /** Cambia el tema y lo persiste. */
+    fun setTheme(dark: Boolean, accent: Int) {
+        isDark = dark
+        accentColor = accent
+        config = config.copy(llm = config.llm.copy(uiDark = dark, uiAccent = accent)).save()
     }
 
     fun go(target: Screen) {

@@ -34,17 +34,48 @@ fun ApisPane(vm: ChatViewModel) {
         item {
             Spacer(Modifier.height(8.dp))
             Text("Agregar API", style = MaterialTheme.typography.titleMedium)
-            OutlinedTextField(value = label, onValueChange = { label = it }, label = { Text("Nombre (ej. Mi Ollama)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+            OutlinedTextField(
+                value = label,
+                onValueChange = { label = it },
+                label = { Text("Nombre (ej. Mi Ollama)") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+            )
             Spacer(Modifier.height(8.dp))
-            OutlinedTextField(value = baseUrl, onValueChange = { baseUrl = it }, label = { Text("URL base (ej. http://localhost:11434/v1)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+            OutlinedTextField(
+                value = baseUrl,
+                onValueChange = { baseUrl = it },
+                label = { Text("URL base (ej. http://localhost:11434/v1)") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+            )
             Spacer(Modifier.height(8.dp))
-            OutlinedTextField(value = model, onValueChange = { model = it }, label = { Text("Modelo (ej. phi4-mini)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+            OutlinedTextField(
+                value = model,
+                onValueChange = { model = it },
+                label = { Text("Modelo (ej. phi4-mini)") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+            )
             Spacer(Modifier.height(8.dp))
-            OutlinedTextField(value = apiKey, onValueChange = { apiKey = it }, label = { Text("Clave (vacío = sin clave)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+            OutlinedTextField(
+                value = apiKey,
+                onValueChange = { apiKey = it },
+                label = { Text("Clave (vacío = sin clave)") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+            )
             Spacer(Modifier.height(8.dp))
-            Button(onClick = { vm.addApi(label, baseUrl, apiKey, model); label = ""; baseUrl = ""; apiKey = ""; model = "" }, enabled = label.isNotBlank() && baseUrl.isNotBlank()) {
-                Text("Guardar API")
-            }
+            Button(
+                onClick = {
+                    vm.addApi(label, baseUrl, apiKey, model)
+                    label = ""
+                    baseUrl = ""
+                    apiKey = ""
+                    model = ""
+                },
+                enabled = label.isNotBlank() && baseUrl.isNotBlank(),
+            ) { Text("Guardar API") }
         }
     }
 }
