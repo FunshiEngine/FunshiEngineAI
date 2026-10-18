@@ -29,12 +29,14 @@ class ChatViewModel {
     private val kb = KnowledgeBase(config.rag)
     private var engine: RagEngine? = null
     private var chatJob: Job? = null
+    /** Cola de mensajes pendientes mientras no hay engine listo. */
+    private val pendingMessages = mutableListOf<Pair<String, List<ChatMessage>>>()
 
-    var screen by mutableStateOf(Screen.LOADING)
+    var screen by mutableStateOf(Screen.CHAT)  // ¡Chat visible YA!
         private set
     var messages by mutableStateOf(listOf<UiMessage>())
         private set
-    var status by mutableStateOf("Iniciando…")
+    var status by mutableStateOf("Inicializando modelo en segundo plano…")
         private set
     var ready by mutableStateOf(false)
         private set
@@ -63,6 +65,7 @@ class ChatViewModel {
 
     init {
         refreshLists()
+        // Arranque en background: NO bloquea la UI
         scope.launch { boot() }
     }
 
@@ -122,13 +125,25 @@ class ChatViewModel {
             engine = RagEngine(config.rag, kb, llm)
             ready = true
             status = "Listo · ${kb.chunkCount} fragmentos indexados · ${config.llm.mode}"
-            screen = Screen.CHAT
+            // Procesar mensajes encolados mientras el modelo cargaba
+            processPendingMessages()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             progress = null
             error = friendly(e)
             status = "Sin modelo: revisa la pantalla de modelos."
+        }
+    }
+
+    /** Procesa la cola de mensajes pendientes tras inicializar el engine. */
+    private fun processPendingMessages() {
+        if (pendingMessages.isNotEmpty() && engine != null) {
+            val queue = pendingMessages.toList()
+            pendingMessages.clear()
+            for ((text, history) in queue) {
+                sendInternal(text, history)
+            }
         }
     }
 
@@ -155,10 +170,24 @@ class ChatViewModel {
     }
 
     fun send(text: String) {
-        val eng = engine ?: return
         if (text.isBlank() || busy) return
         val history = messages.filter { it.text.isNotEmpty() }.map { ChatMessage(it.role, it.text) }
-        messages = messages + UiMessage("user", text) + UiMessage("assistant", "")
+        // Añadir mensaje del usuario + placeholder del asistente inmediatamente
+        messages = messages + UiMessage("user", text) + UiMessage("assistant", "…")
+        
+        if (engine == null || !ready) {
+            // Encolar para cuando el modelo esté listo
+            pendingMessages.add(text to history)
+            status = "Mensaje encolado — el modelo se está cargando…"
+            return
+        }
+        
+        sendInternal(text, history)
+    }
+
+    /** Lógica interna de envío (engine garantizado no-nulo y ready=true). */
+    private fun sendInternal(text: String, history: List<ChatMessage>) {
+        val eng = engine!!
         busy = true
         error = ""
         chatJob?.cancel()
