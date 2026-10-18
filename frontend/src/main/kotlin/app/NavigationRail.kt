@@ -1,5 +1,6 @@
 package app
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,35 +15,66 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** Barra lateral fija (72dp) con navegación principal (solo texto, sin iconos). */
+/** Barra lateral con navegación principal, colapsable. */
 @Composable
 fun NavigationRailPane(
     vm: ChatViewModel,
     onNavigate: (Screen) -> Unit,
 ) {
+    var expanded by remember { mutableStateOf(true) }
+    
     Column(
         Modifier
-            .width(72.dp)
+            .width(if (expanded) 200.dp else 72.dp)
             .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(0.dp)),
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(0.dp))
+            .animateContentSize(),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Spacer(Modifier.height(16.dp))
+        
+        if (expanded) {
+            Text(
+                "FunshiEngineAI",
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        Spacer(Modifier.height(16.dp))
+        
+        // Botón colapsar/expandir
         Text(
-            "AI",
-            modifier = Modifier.align(Alignment.CenterHorizontally),
+            text = if (expanded) "≡" else "☰",
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .clickable { expanded = !expanded }
+                .background(Color.Transparent, RoundedCornerShape(8.dp)),
+            textAlign = TextAlign.Center,
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.primary,
         )
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(16.dp))
 
-        railItem("Chat", Screen.CHAT, vm, onNavigate)
-        railItem("Modelos", Screen.MODELS, vm, onNavigate)
-        railItem("APIs", Screen.APIS, vm, onNavigate)
+        if (expanded) {
+            railItem("Chat", Screen.CHAT, vm, onNavigate)
+            railItem("Modelos", Screen.MODELS, vm, onNavigate)
+            railItem("APIs", Screen.APIS, vm, onNavigate)
 
-        Spacer(Modifier.weight(1f))
+            Spacer(Modifier.weight(1f))
 
-        railItem("Config", Screen.SETTINGS, vm, onNavigate)
+            railItem("Config", Screen.SETTINGS, vm, onNavigate)
+        } else {
+            // Letras cuando está colapsado
+            railItem("C", Screen.CHAT, vm, onNavigate)
+            railItem("M", Screen.MODELS, vm, onNavigate)
+            railItem("A", Screen.APIS, vm, onNavigate)
+
+            Spacer(Modifier.weight(1f))
+
+            railItem("⚙", Screen.SETTINGS, vm, onNavigate)
+        }
         Spacer(Modifier.height(8.dp))
     }
 }
@@ -59,7 +91,7 @@ private fun railItem(
         text = label,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 12.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp)
             .clickable { onNavigate(screen) }
             .background(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent, RoundedCornerShape(8.dp)),
         style = MaterialTheme.typography.labelSmall,
