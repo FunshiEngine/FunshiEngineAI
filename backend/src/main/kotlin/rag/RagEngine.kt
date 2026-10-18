@@ -35,4 +35,27 @@ class RagEngine(
         }
         return Answer(hits, llm.chatStream(messages))
     }
+
+    /**
+     * Modo General: conversación libre SIN la restricción de responder sólo de
+     * la documentación. El modelo usa su propio conocimiento; no hay fuentes
+     * que citar. Es lo que permite charlar cuando la base está vacía.
+     */
+    fun askGeneral(question: String, history: List<ChatMessage>): Answer {
+        val messages = buildList {
+            add(ChatMessage("system", GENERAL_PROMPT))
+            addAll(history.takeLast(cfg.historyTurns * 2))
+            add(ChatMessage("user", question))
+        }
+        return Answer(emptyList(), llm.chatStream(messages))
+    }
+
+    companion object {
+        /** Prompt del modo General (chatear sin depender de la documentación). */
+        private val GENERAL_PROMPT = """
+            Eres un asistente útil y conversacional.
+            Responde en el mismo idioma de la pregunta, de forma clara y concisa.
+            Si muestras código, usa bloques de código. No inventes fuentes ni citas.
+        """.trimIndent()
+    }
 }

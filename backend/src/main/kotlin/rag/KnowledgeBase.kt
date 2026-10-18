@@ -3,11 +3,19 @@ package rag
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** Carga las fuentes (GitHub + carpetas internas), las trocea e indexa. */
+/** Carga las fuentes (GitHub + carpetas internas + docs del motor), las trocea e indexa. */
 class KnowledgeBase(private val cfg: RagConfig) {
 
     @Volatile
     private var index = Bm25Index(emptyList())
+
+    /**
+     * Carpeta con la documentación del motor activo (API o modelo local):
+     * `app-home/api-docs/<id-motor>`. Se setea antes de cada [sync]; null =
+     * el motor no tiene docs propias (sólo se indexan las globales).
+     */
+    @Volatile
+    var motorDocsDir: java.nio.file.Path? = null
 
     val chunkCount get() = index.size
 
@@ -26,6 +34,11 @@ class KnowledgeBase(private val cfg: RagConfig) {
         for (d in cfg.internalDocsDirs) {
             onStatus("Leyendo $d…")
             docs += LocalDocsSource(AppPaths.resolve(d), exts).load()
+        }
+        // Docs del motor activo (cada API/modelo local tiene su carpeta propia).
+        motorDocsDir?.let { dir ->
+            onStatus("Leyendo documentación del motor (${dir.fileName})…")
+            docs += LocalDocsSource(dir, exts, label = "motor/${dir.fileName}").load()
         }
 
         onStatus("Indexando ${docs.size} documentos…")

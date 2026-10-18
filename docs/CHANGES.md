@@ -1,5 +1,40 @@
 # Registro de Cambios - FunshiEngineAI
 
+## v0.3.0 (2025-10-18) — Motor de inferencia centralizado
+
+### ✨ Nuevas Características
+
+#### Pantalla "Motor" (antes "APIs") — gestión central del modo LOCAL/REMOTE
+- Sidebar renombrado: `APIs` → **`Motor`** (colapsado: `Mot`), coherente con el título "Motor de inferencia".
+- **Segmentado LOCAL/REMOTE** en la tarjeta de estado: "Modelo local" / "API remota".
+  - "API remota" llama a `vm.setConfigMode("REMOTE")`, que **sincroniza el motor con lo que muestra la pantalla** (si no hay APIs guardadas muestra el error correcto y no cambia de modo).
+  - "Modelo local" llama a `vm.useLocal()`.
+- **Formulario dinámico**: en REMOTE muestra la colección de APIs + formulario de alta (nombre, URL base, modelo, clave) con atajos de proveedores (OpenAI, Groq, OpenRouter, Ollama, LM Studio); en LOCAL muestra el modelo local activo.
+- **Prellenado**: los 4 campos del formulario arrancan con la API activa (o la primera guardada) vía `remember(vm.activeApiId, vm.apiPresets)`.
+- **`listModels()` + botón "Probar conexión"**: `ChatViewModel.testApi()` hace `GET /models` contra el endpoint y reporta cuántos modelos devuelve. Envolto en `withTimeout(20_000)` + timeout friendly en 20 s si el endpoint no responde.
+
+#### Boot por fases con porcentajes
+- `boot()`: indexar docs → descargar modelo (%, MB/MB) → clonar/compilar llama.cpp si falta (%, sólo si no está) → cargar modelo en memoria (%). Cada fase emite `UiProgress` para la UI.
+
+#### Suppliers de config `() -> LlmConfig`
+- `LlmService` y `ModelManager` reciben un **supplier** en vez de una copia: los servicios leen la config en cada arranque. Sin esto, activar una API/modelo no tenía efecto en el arranque en curso.
+
+#### Migración de config v1 → v2 (`configVersion`)
+- `buildFromSource` pasa a `true` por defecto en v2 (v1 lo tenía `false`) y se eliminan las APIs localhost prefijadas que forzaban el modo remoto a un servidor local vacío.
+
+#### LOCAL: "Descargar y usar"
+- Los modelos no descargados ofrecen **"Descargar y usar"** (`downloadModel(entry, activateAfter = true)`: descarga → activa → reinicia el motor) y "Descargar" por separado. Los ya descargados usan "Usar".
+
+### 🔧 Mejoras de UI/UX
+- Layouts con **scrollbar** vertical (`VerticalScrollbar` + `rememberScrollbarAdapter`) en Motor, Config y Modelos.
+
+### 🩹 Correcciones
+- `LlmGateway.kt`: faltaba `import kotlinx.coroutines.withContext` → `listModels()` no compilaba.
+- `ChatViewModel`: choque de firma JVM `setLocalPort`/`setBuildFromSource` (propiedad + función homónima) → renombradas a `changeLocalPort`/`changeBuildFromSource`.
+- `testApi()`: timeout friendly en 20 s y re-lanzado real de cancelaciones (`CancellationException`).
+
+---
+
 ## v0.2.0 (2025-10-18) — Arquitectura Reactiva + Sidebar Colapsable
 
 ### ✨ Nuevas Características

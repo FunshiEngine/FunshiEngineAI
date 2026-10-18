@@ -8,6 +8,7 @@ plugins {
 
 dependencies {
     implementation(project(":backend"))
+    implementation(project(":estructuras"))
     implementation(compose.desktop.currentOs)
     implementation(compose.material3)
     implementation(compose.materialIconsExtended)

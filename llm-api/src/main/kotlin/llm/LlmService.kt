@@ -9,16 +9,26 @@ import java.nio.file.Path
  *
  * Validación fail-fast al estilo SAI (`config/validate.ts`): la config se
  * valida antes de tocar red o procesos, con todos los problemas listados.
+ *
+ * La config se lee en cada arranque vía [state] (fuente de verdad = ViewModel).
+ * Antes se guardaba una copia al construir el servicio, así que activar una API
+ * o cambiar de modelo no tenía efecto: el servicio seguía con la config inicial
+ * y seguía exigiendo el modelo local + llama-server en localhost.
+ *
+ * En modo REMOTE no se toca nada local: ni descarga, ni clonado, ni servidor.
  */
-class LlmService(private val cfg: LlmConfig, private val baseDir: Path) {
+class LlmService(private val state: () -> LlmConfig, private val baseDir: Path) {
 
-    private val server = LocalServerManager(cfg, baseDir.resolve("logs"))
+    /** Servidor de la sesión actual (null en REMOTE o antes del primer start). */
+    private var server: LocalServerManager? = null
     private var gateway: LlmGateway? = null
 
     suspend fun start(
         onStatus: (String) -> Unit,
         onSetup: (LlamaSetupProgress) -> Unit = { onStatus(it.message) },
+        onDownload: (downloaded: Long, total: Long) -> Unit = { _, _ -> },
     ): LlmGateway {
+        val cfg = state()
         val errors = cfg.validate()
         if (errors.isNotEmpty()) {
             throw LlmException(
@@ -29,36 +39,45 @@ class LlmService(private val cfg: LlmConfig, private val baseDir: Path) {
         }
         val baseUrl = when (cfg.mode) {
             LlmMode.REMOTE -> {
+                // Nada de localhost: solo el endpoint que configuró el usuario.
                 onStatus("Usando API remota: ${cfg.remoteBaseUrl}")
                 cfg.remoteBaseUrl
             }
             LlmMode.LOCAL -> {
                 var last = 0L
+                // ensureModel no vuelve a bajar nada si el archivo ya existe y pesa > 0.
                 val model = retryTransient("descarga del modelo") {
                     HuggingFaceDownloader(cfg.hfToken).ensureModel(
                         cfg.hfRepo, cfg.hfFile, baseDir.resolve(cfg.modelsDir)
                     ) { done, total ->
                         val now = System.currentTimeMillis()
-                        if (now - last > 300) {
+                        val finished = total > 0 && done >= total
+                        if (now - last > 300 || finished) {
                             last = now
-                            val pct = if (total > 0) done * 100 / total else 0
-                            onStatus("Descargando ${cfg.hfFile}: ${done shr 20} / ${total shr 20} MB ($pct%)")
+                            onDownload(done, total)
                         }
                     }
                 }
-                server.start(model, onStatus, onSetup)
+                // Servidor por arranque: siempre con la config vigente.
+                server?.stop()
+                val srv = LocalServerManager(cfg, baseDir.resolve("logs"))
+                srv.start(model, onStatus, onSetup)
+                server = srv
                 // Puerto efectivo: el escaneo pudo moverlo si el configurado estaba ocupado.
-                "http://127.0.0.1:${server.boundPort}/v1"
+                "http://127.0.0.1:${srv.boundPort}/v1"
             }
         }
         return OpenAiCompatibleGateway(
-            baseUrl, cfg.apiKey, cfg.modelName, cfg.temperature, cfg.maxTokens, cfg.chatTimeoutMs
+            baseUrl, cfg.apiKey, cfg.modelName, cfg.temperature, cfg.maxTokens, cfg.chatTimeoutMs,
+            cfg.thinking, cfg.power,
         ).also { gateway = it }
     }
 
     fun stop() {
         gateway?.close()
-        server.stop()
+        gateway = null
+        server?.stop()
+        server = null
     }
 
     companion object {

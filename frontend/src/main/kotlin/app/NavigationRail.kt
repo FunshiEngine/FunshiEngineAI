@@ -25,6 +25,7 @@ fun NavigationRailPane(
     
     Column(
         Modifier
+            .fillMaxHeight()
             .width(if (expanded) 200.dp else 72.dp)
             .background(MaterialTheme.colorScheme.surfaceContainerHighest)
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(0.dp))
@@ -60,7 +61,7 @@ fun NavigationRailPane(
         if (expanded) {
             railItem("Chat", Screen.CHAT, vm, onNavigate)
             railItem("Modelos", Screen.MODELS, vm, onNavigate)
-            railItem("APIs", Screen.APIS, vm, onNavigate)
+            railItem("Motor", Screen.APIS, vm, onNavigate)
 
             Spacer(Modifier.weight(1f))
 
@@ -69,7 +70,7 @@ fun NavigationRailPane(
             // Letras cuando está colapsado
             railItem("C", Screen.CHAT, vm, onNavigate)
             railItem("M", Screen.MODELS, vm, onNavigate)
-            railItem("A", Screen.APIS, vm, onNavigate)
+            railItem("Mot", Screen.APIS, vm, onNavigate)
 
             Spacer(Modifier.weight(1f))
 

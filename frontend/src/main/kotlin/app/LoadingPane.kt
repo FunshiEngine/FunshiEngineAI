@@ -5,10 +5,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** Pantalla de carga: clonar/compilar/descargar/arrancar con barra y botón Reintentar. */
+/**
+ * Pantalla de carga del arranque con progreso REAL por fases:
+ * indexado de docs → descarga del modelo (%, MB) → clonado/compilación de
+ * llama-server (%, sólo si falta) → carga del modelo en memoria (%).
+ */
 @Composable
 fun LoadingPane(vm: ChatViewModel) {
     val p = vm.progress
@@ -19,18 +24,27 @@ fun LoadingPane(vm: ChatViewModel) {
     ) {
         Text("Preparando el asistente…", style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(12.dp))
-        Text(vm.status, fontSize = 13.sp, maxLines = 3)
-        Spacer(Modifier.height(16.dp))
+        Text(vm.status, fontSize = 13.sp, textAlign = TextAlign.Center)
+
+        Spacer(Modifier.height(20.dp))
         if (p?.percent != null) {
-            val frac = (p.percent ?: 0).coerceIn(0, 100) / 100f
-            LinearProgressIndicator(progress = frac, modifier = Modifier.fillMaxWidth())
+            val pct = p.percent.coerceIn(0, 100)
+            LinearProgressIndicator(
+                progress = { pct / 100f },
+                modifier = Modifier.fillMaxWidth(),
+            )
             Spacer(Modifier.height(8.dp))
-            Text("${p.label} — ${p.percent}%${bytesSuffix(p)}", fontSize = 12.sp)
+            Text("${p.label} — $pct%${sizeSuffix(p.doneBytes, p.totalBytes)}", fontSize = 12.sp)
         } else {
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(8.dp))
-            Text(p?.label ?: "Trabajando…", fontSize = 12.sp)
+            val detail = if (p != null) humanSize(p.doneBytes) else null
+            Text(
+                listOfNotNull(p?.label, detail).joinToString(" — ").ifBlank { "Trabajando…" },
+                fontSize = 12.sp,
+            )
         }
+
         if (vm.busy && p?.label?.startsWith("Descargando") == true) {
             Spacer(Modifier.height(12.dp))
             OutlinedButton(onClick = vm::cancelDownload) { Text("Cancelar descarga") }
@@ -42,5 +56,8 @@ fun LoadingPane(vm: ChatViewModel) {
     }
 }
 
-private fun bytesSuffix(p: UiProgress): String =
-    if (p.totalBytes > 0) " (${p.doneBytes shr 20} / ${p.totalBytes shr 20} MB)" else ""
+private fun sizeSuffix(done: Long, total: Long): String = when {
+    total > 0 -> " · ${humanSize(done)} / ${humanSize(total)}"
+    done > 0 -> " · ${humanSize(done)}"
+    else -> ""
+}

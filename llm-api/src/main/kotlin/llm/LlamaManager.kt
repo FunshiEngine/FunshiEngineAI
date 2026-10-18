@@ -9,36 +9,40 @@ import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
-/** Fase del aprovisionamiento de `llama-server` (clonado/compilado), rÃƒÂ©plica de LlamaCppProgress de SAI. */
+/** Fase del aprovisionamiento de `llama-server` (clonado/compilado), réplica de LlamaCppProgress de SAI. */
 enum class LlamaSetupStage { CLONE, BUILD, DOWNLOAD, START }
 
 /** Progreso del aprovisionamiento: etapa + porcentaje (null = indeterminado) + mensaje. */
 data class LlamaSetupProgress(val stage: LlamaSetupStage, val percent: Int?, val message: String)
 
 /**
- * Clonado + compilado del repo llama.cpp, rÃƒÂ©plica de la tÃƒÂ©cnica de
+ * Clonado + compilado del repo llama.cpp, réplica de la técnica de
  * `LlamaCppServerManager.ts` (SAI):
  *
  * - `git clone --depth 1 [--branch <v>]` con progreso parseado de stderr
  *   (`Receiving objects: NN%`); reintenta sin `--depth 1` si falla (B-16).
- * - `git checkout` a la versiÃƒÂ³n pedida (vacÃƒÂ­o = HEAD).
- * - Candidatos de binario: ruta explÃƒÂ­cita Ã¢â€ â€™ `build/bin/llama-server[.exe]` Ã¢â€ â€™
+ * - `git checkout` a la versión pedida (vacío = HEAD).
+ * - Candidatos de binario: ruta explícita → `build/bin/llama-server[.exe]` →
  *   `build/llama-server[.exe]`.
  * - Si no hay binario y `llm.buildFromSource=true`: `cmake -B build` +
- *   `cmake --build build --config Release -j<N>` con progreso por lÃƒÂ­neas de
- *   compilaciÃƒÂ³n (`[NN%]`/`[NN/NN]`), timeout 20 min.
+ *   `cmake --build build --config Release -j<N>` con progreso por líneas de
+ *   compilación (`[NN%]`/`[NN/NN]`), timeout 20 min.
  * - `ensureReady()`: cadena global contra clonados concurrentes
  *   (como `repoSetupChain` de SAI).
+ *
+ * Importante: nada de esto se ejecuta si ya hay binario (no se re-clona ni se
+ * recompila en cada arranque) — sólo se clona si falta el `.git` y sólo se
+ * compila si no aparece el ejecutable.
  */
 class LlamaManager(private val cfg: LlmConfig, private val baseDir: Path) {
 
-    /** Directorio donde vive (o vivirÃƒÂ¡) el clon de llama.cpp. */
+    /** Directorio donde vive (o vivirá) el clon de llama.cpp. */
     fun repoDir(): Path = if (cfg.llamaRepoDir.isNotBlank()) Path.of(cfg.llamaRepoDir)
     else baseDir.resolve("llama.cpp")
 
     fun serverBinaryName(): String = if (IS_WINDOWS) "llama-server.exe" else "llama-server"
 
-    /** Binario esperado dentro del repo compilado (`build/bin/Ã¢â‚¬Â¦`). */
+    /** Binario esperado dentro del repo compilado (`build/bin/…`). */
     fun expectedRepoBinary(): Path = repoDir().resolve("build/bin").resolve(serverBinaryName())
 
     fun logFile(): Path = baseDir.resolve("logs/llama-build.log")
@@ -54,43 +58,88 @@ class LlamaManager(private val cfg: LlmConfig, private val baseDir: Path) {
     }
 
     /**
-     * Garantiza `llama-server` ejecutable: ruta explÃƒÂ­cita Ã¢â€ â€™ binario del repo Ã¢â€ â€™
-     * build desde fuentes (si [LlmConfig.buildFromSource]) Ã¢â‚¬â€ igual que
-     * `LlamaCppServerManager.ensureBinary()` de SAI.
+     * Garantiza `llama-server` ejecutable: ruta explícita → binario ya compilado
+     * → clonar (sólo si no hay clon) → compilar (sólo si [LlmConfig.buildFromSource]
+     * y no hay binario) — igual que `LlamaCppServerManager.ensureBinary()` de SAI.
      */
     suspend fun ensureReady(onProgress: (LlamaSetupProgress) -> Unit = {}): String =
         chainFor(repoDir()).withLock {
             val explicit = cfg.llamaServerPath.trim()
             if (explicit.isNotEmpty()) return@withLock resolveExplicit(explicit)
+            // Ya compilado: se reutiliza, no se clona ni se compila nada.
             findRepoBinary()?.let { return@withLock it }
             val dir = repoDir()
+            // Sin compilación permitida no se clona ni se compila nada: fallar rápido
+            // (antes clonaba el repo entero y recién después avisaba, descarga inútil).
+            if (!cfg.buildFromSource) throw noBinaryError(dir)
             if (!Files.isDirectory(dir.resolve(".git"))) {
                 cloneRepo(dir, onProgress)
             } else {
+                // Clon existente: sólo se ajusta la versión pedida (si hay).
                 checkoutVersion(dir)
             }
+            // Chequeo post-descarga: SIEMPRE verificar que el clon quedó completo
+            // ANTES de compilar (un clon a medias hacía que cmake fallara minutos
+            // después con un error poco claro).
+            verifyCloneComplete(dir)
             findRepoBinary()?.let { return@withLock it }
-            if (!cfg.buildFromSource) {
-                throw LlmException(
-                    LlmErrorCode.NO_CONFIGURADO,
-                    "No hay llama-server compilado en ${dir.toAbsolutePath()} y la compilaciÃƒÂ³n " +
-                        "estÃƒÂ¡ desactivada (llm.buildFromSource=false). ActÃƒÂ­vala o indica llm.llamaServerPath.",
-                    retryable = false,
-                )
-            }
             buildRepo(dir, onProgress)
             findRepoBinary() ?: throw LlmException(
                 LlmErrorCode.DESCARGA_FALLIDA,
-                "La compilaciÃƒÂ³n terminÃƒÂ³ pero no apareciÃƒÂ³ ${expectedRepoBinary()}. " +
+                "La compilación terminó pero no apareció ${expectedRepoBinary()}. " +
                     "Revisa el log: ${logFile().toAbsolutePath()}",
                 retryable = true,
             )
         }
 
+    /** Error claro cuando falta el binario y la compilación está desactivada. */
+    private fun noBinaryError(dir: Path): LlmException = LlmException(
+        LlmErrorCode.NO_CONFIGURADO,
+        "No hay llama-server compilado en ${dir.toAbsolutePath()} y la compilación " +
+            "está desactivada (llm.buildFromSource=false). Actívala o indica llm.llamaServerPath.",
+        retryable = false,
+    )
+
+    /**
+     * Verifica que el clon de llama.cpp esté COMPLETO antes de compilar:
+     * `.git` + `CMakeLists.txt` + `vendor/`. Un clon interrumpido (red, timeout)
+     * dejaba un directorio a medias y el compilado fallaba con errores crípticos.
+     */
+    private fun verifyCloneComplete(dir: Path) {
+        val faltantes = buildList {
+            if (!Files.isDirectory(dir.resolve(".git"))) add(".git")
+            if (!Files.isRegularFile(dir.resolve("CMakeLists.txt"))) add("CMakeLists.txt")
+            if (!Files.isDirectory(dir.resolve("vendor"))) add("vendor/")
+        }
+        if (faltantes.isEmpty()) return
+        throw LlmException(
+            LlmErrorCode.DESCARGA_FALLIDA,
+            "El clon de llama.cpp quedó incompleto en ${dir.toAbsolutePath()} " +
+                "(falta: ${faltantes.joinToString(", ")}). Borra esa carpeta y reintentá " +
+                "(botón Reintentar): se vuelve a descargar entero.",
+            retryable = true,
+        )
+    }
+
+    /** Chequea que una herramienta de build exista ANTES de usarla (error claro). */
+    private fun requireTool(name: String, hint: String) {
+        val check = ProcessBuilder(name, "--version")
+            .redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start()
+        if (!check.waitFor(15_000, TimeUnit.MILLISECONDS) || check.exitValue() != 0) {
+            throw LlmException(
+                LlmErrorCode.NO_CONFIGURADO,
+                "No se encontró '$name' en el PATH. $hint",
+                retryable = false,
+            )
+        }
+    }
+
     // ---- clonado (SAI: cloneRepo) ----
 
     private suspend fun cloneRepo(dir: Path, onProgress: (LlamaSetupProgress) -> Unit) = withContext(Dispatchers.IO) {
-        onProgress(LlamaSetupProgress(LlamaSetupStage.CLONE, 0, "Clonando llama.cpp (${cfg.llamaRepoUrl})Ã¢â‚¬Â¦"))
+        // Chequeo ANTES de clonar: si git no está, avisar en 1 s y no descargar nada.
+        requireTool(cfg.gitBin.ifBlank { "git" }, "Instalá Git (https://git-scm.com/downloads) o indicá su ruta en llm.gitBin.")
+        onProgress(LlamaSetupProgress(LlamaSetupStage.CLONE, 0, "Clonando llama.cpp (${cfg.llamaRepoUrl})…"))
         val parent = dir.parent ?: dir
         Files.createDirectories(parent)
         if (Files.exists(dir) && !Files.isDirectory(dir.resolve(".git"))) {
@@ -103,14 +152,14 @@ class LlamaManager(private val cfg: LlmConfig, private val baseDir: Path) {
         args += listOf(repoUrl, dir.toString())
         try {
             runGit(args, CLONE_TIMEOUT_MS) { line ->
-                clonePercent(line)?.let { onProgress(LlamaSetupProgress(LlamaSetupStage.CLONE, it, "Clonando llama.cppÃ¢â‚¬Â¦ $it%")) }
+                clonePercent(line)?.let { onProgress(LlamaSetupProgress(LlamaSetupStage.CLONE, it, "Clonando llama.cpp… $it%")) }
             }
         } catch (e: LlmException) {
             // B-16 de SAI: si el shallow clone falla, reintenta completo.
             if (!cfg.llamaRepoVersion.isBlank()) throw e
-            onProgress(LlamaSetupProgress(LlamaSetupStage.CLONE, null, "El clon superficial fallÃƒÂ³; reintentando completoÃ¢â‚¬Â¦"))
+            onProgress(LlamaSetupProgress(LlamaSetupStage.CLONE, null, "El clon superficial falló; reintentando completo…"))
             runGit(listOf("clone", "--progress", repoUrl, dir.toString()), CLONE_TIMEOUT_MS) { line ->
-                clonePercent(line)?.let { onProgress(LlamaSetupProgress(LlamaSetupStage.CLONE, it, "Clonando llama.cppÃ¢â‚¬Â¦ $it%")) }
+                clonePercent(line)?.let { onProgress(LlamaSetupProgress(LlamaSetupStage.CLONE, it, "Clonando llama.cpp… $it%")) }
             }
         }
         checkoutVersion(dir)
@@ -126,7 +175,7 @@ class LlamaManager(private val cfg: LlmConfig, private val baseDir: Path) {
         } catch (_: Exception) { /* HEAD por defecto */ }
     }
 
-    /** Mayor `NN%` visible en la lÃƒÂ­nea (`Receiving objects: 45%`, `Resolving deltas: 12%`). */
+    /** Mayor `NN%` visible en la línea (`Receiving objects: 45%`, `Resolving deltas: 12%`). */
     private fun clonePercent(line: String): Int? =
         Regex("""(\d{1,3})\s*%""").findAll(line)
             .mapNotNull { it.groupValues[1].toIntOrNull() }
@@ -136,21 +185,23 @@ class LlamaManager(private val cfg: LlmConfig, private val baseDir: Path) {
     // ---- compilado (SAI: buildServerBinary) ----
 
     private suspend fun buildRepo(dir: Path, onProgress: (LlamaSetupProgress) -> Unit): Unit = withContext(Dispatchers.IO) {
-        onProgress(LlamaSetupProgress(LlamaSetupStage.BUILD, 0, "Configurando la compilaciÃƒÂ³n (cmake)Ã¢â‚¬Â¦"))
+        // Chequeo ANTES de compilar: cmake ausente = fallar ya, no tras el clon.
+        requireTool("cmake", "Instalá CMake (https://cmake.org/download/) o marcá la opción del instalador \"Add to PATH\".")
+        onProgress(LlamaSetupProgress(LlamaSetupStage.BUILD, 0, "Configurando la compilación de llama.cpp (cmake)…"))
         val cpus = maxOf(1, Runtime.getRuntime().availableProcessors())
         runProcess(
             listOf("cmake", "-S", ".", "-B", "build", "-DCMAKE_BUILD_TYPE=Release"),
             dir, BUILD_TIMEOUT_MS, logFile(),
         ) { line ->
-            clonePercent(line)?.let { onProgress(LlamaSetupProgress(LlamaSetupStage.BUILD, it / 2, "ConfigurandoÃ¢â‚¬Â¦ $it%")) }
+            clonePercent(line)?.let { onProgress(LlamaSetupProgress(LlamaSetupStage.BUILD, it / 2, "Configurando… $it%")) }
         }
-        onProgress(LlamaSetupProgress(LlamaSetupStage.BUILD, 50, "Compilando llama-server con $cpus hilosÃ¢â‚¬Â¦ (puede tardar varios minutos)"))
+        onProgress(LlamaSetupProgress(LlamaSetupStage.BUILD, 50, "Compilando llama-server con $cpus hilos… (puede tardar varios minutos)"))
         val buildArgs = mutableListOf("cmake", "--build", "build", "--config", "Release", "-j", cpus.toString())
         if (!IS_WINDOWS) buildArgs += listOf("--target", "llama-server")
         runProcess(buildArgs, dir, BUILD_TIMEOUT_MS, logFile()) { line ->
-            buildPercent(line)?.let { onProgress(LlamaSetupProgress(LlamaSetupStage.BUILD, 50 + it / 2, "CompilandoÃ¢â‚¬Â¦ $it%")) }
+            buildPercent(line)?.let { onProgress(LlamaSetupProgress(LlamaSetupStage.BUILD, 50 + it / 2, "Compilando… $it%")) }
         }
-        onProgress(LlamaSetupProgress(LlamaSetupStage.BUILD, 100, "CompilaciÃƒÂ³n terminada."))
+        onProgress(LlamaSetupProgress(LlamaSetupStage.BUILD, 100, "Compilación terminada."))
     }
 
     /** `[ 45%]` o `[123/456]` de la salida de cmake/make. */
@@ -164,11 +215,16 @@ class LlamaManager(private val cfg: LlmConfig, private val baseDir: Path) {
         val total = m.groupValues[2].toIntOrNull()?.takeIf { it > 0 } ?: return null
         return (done * 100 / total).coerceIn(0, 100)
     }
-    // ---- resoluciÃƒÂ³n del binario (SAI: resolveBinary) ----
+    // ---- resolución del binario (SAI: resolveBinary) ----
 
     private fun findRepoBinary(): String? {
+        // MSVC (generator "Visual Studio") pone el binario en build/bin/Release/,
+        // no en build/bin/ directamente: sin buscar ahí la compilación "terminaba
+        // bien" pero el gestor seguía diciendo que faltaba el binario.
         val cands = listOf(
             expectedRepoBinary(),
+            repoDir().resolve("build/bin/Release").resolve(serverBinaryName()),
+            repoDir().resolve("build/bin/Debug").resolve(serverBinaryName()),
             repoDir().resolve("build").resolve(serverBinaryName()),
         )
         return cands.firstOrNull { Files.isRegularFile(it) }?.toAbsolutePath()?.toString()
@@ -194,15 +250,15 @@ class LlamaManager(private val cfg: LlmConfig, private val baseDir: Path) {
         try {
             runProcess(listOf(git) + args, baseDir, timeoutMs, logFile(), onStderr)
         } catch (e: LlmException) {
-            val hint = if (e.code == LlmErrorCode.NO_CONFIGURADO) " Ã‚Â¿EstÃƒÂ¡ git instalado y en el PATH?" else ""
+            val hint = if (e.code == LlmErrorCode.NO_CONFIGURADO) " ¿Está git instalado y en el PATH?" else ""
             throw LlmException(e.code, e.message + hint, e.retryable, e.cause)
         }
     }
 
     /**
-     * Ejecuta un proceso capturando stdout al log y reportando cada lÃƒÂ­nea de
-     * stderr a [onStderr] (de ahÃƒÂ­ sale el % de git/cmake). Guarda el tail
-     * (ÃƒÂºltimos 2 KB) para incluirlo en el error, como SAI.
+     * Ejecuta un proceso capturando stdout al log y reportando cada línea de
+     * stderr a [onStderr] (de ahí sale el % de git/cmake). Guarda el tail
+     * (últimos 2 KB) para incluirlo en el error, como SAI.
      */
     private fun runProcess(cmd: List<String>, cwd: Path, timeoutMs: Long, log: Path, onStderr: (String) -> Unit = {}) {
         val parent = log.parent ?: cwd
@@ -216,7 +272,7 @@ class LlamaManager(private val cfg: LlmConfig, private val baseDir: Path) {
         } catch (e: java.io.IOException) {
             throw LlmException(
                 LlmErrorCode.NO_CONFIGURADO,
-                "No pude ejecutar '${cmd.first()}'. Revisa que estÃƒÂ© instalado y en el PATH. (${e.message})",
+                "No pude ejecutar '${cmd.first()}'. Revisa que esté instalado y en el PATH. (${e.message})",
                 retryable = false, cause = e,
             )
         }
@@ -237,7 +293,7 @@ class LlamaManager(private val cfg: LlmConfig, private val baseDir: Path) {
             proc.destroyForcibly()
             throw LlmException(
                 LlmErrorCode.TIMEOUT,
-                "'${cmd.first()}' superÃƒÂ³ el tiempo mÃƒÂ¡ximo (${timeoutMs / 1000}s).",
+                "'${cmd.first()}' superó el tiempo máximo (${timeoutMs / 1000}s).",
                 retryable = true,
             )
         }
@@ -246,7 +302,7 @@ class LlamaManager(private val cfg: LlmConfig, private val baseDir: Path) {
             val tail = synchronized(err) { err.toString().takeLast(2000) }.ifBlank { "(sin salida)" }
             throw LlmException(
                 LlmErrorCode.DESCARGA_FALLIDA,
-                "'${cmd.joinToString(" ")}' terminÃƒÂ³ con cÃƒÂ³digo ${proc.exitValue()}. $tail",
+                "'${cmd.joinToString(" ")}' terminó con código ${proc.exitValue()}. $tail",
                 retryable = true,
             )
         }
@@ -257,7 +313,7 @@ class LlamaManager(private val cfg: LlmConfig, private val baseDir: Path) {
             .redirectOutput(ProcessBuilder.Redirect.DISCARD)
             .redirectErrorStream(true).start()
         if (!p.waitFor(timeoutMs, TimeUnit.MILLISECONDS) || p.exitValue() != 0) {
-            throw IllegalStateException("git checkout fallÃƒÂ³")
+            throw IllegalStateException("git checkout falló")
         }
     }
 }

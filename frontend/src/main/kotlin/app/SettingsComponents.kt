@@ -14,21 +14,28 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 @Composable
-fun themeOption(vm: ChatViewModel, label: String, isDark: Boolean, onThemeChange: (AppTheme) -> Unit) {
+fun themeOption(
+    vm: ChatViewModel,
+    label: String,
+    isDark: Boolean,
+    modifier: Modifier = Modifier,
+) {
     val selected = vm.isDark == isDark
     val color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
     val borderWidth = if (selected) 2.dp else 0.dp
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onThemeChange(AppTheme(dark = isDark, accent = vm.accentColor)) }
+        modifier = modifier
+            // Llamada DIRECTA al ViewModel: antes pasaba por la cadena
+            // SettingsPane → ChatScreen → Main (onThemeChange) y si un eslabón
+            // no estaba conectado el click no hacía nada visible.
+            .clickable { vm.setTheme(isDark, vm.accentColor) }
             .border(borderWidth, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp)),
         colors = CardDefaults.cardColors(containerColor = color),
     ) {
         Column(
             Modifier.padding(16.dp).fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(label, style = MaterialTheme.typography.bodyMedium)
         }

@@ -6,3 +6,4 @@ build-all.log
 .idea/
 app-home/
 .agentes/
+.kotlin/

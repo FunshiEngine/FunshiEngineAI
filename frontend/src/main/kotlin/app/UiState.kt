@@ -23,3 +23,19 @@ data class UiMessage(
     val text: String,
     val sources: List<String> = emptyList(),
 )
+
+/** Archivo documental cargado en un motor (para el panel "Documentación"). */
+data class UiDocsFile(
+    val name: String,
+    val ext: String,
+    val size: Long,
+)
+
+/** Tamaño legible para la UI ("2.35 GB", "512.0 MB", "48 KB"). */
+fun humanSize(bytes: Long): String = when {
+    bytes <= 0L -> "—"
+    bytes >= 1L shl 30 -> String.format("%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0))
+    bytes >= 1L shl 20 -> String.format("%.1f MB", bytes / (1024.0 * 1024.0))
+    bytes >= 1024L -> "${bytes / 1024} KB"
+    else -> "$bytes B"
+}

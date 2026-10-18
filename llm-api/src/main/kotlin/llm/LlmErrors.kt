@@ -68,7 +68,11 @@ class LlmException(
                         retryable = true,
                     )
                 status == 404 ->
-                    LlmException(LlmErrorCode.MODELO_NO_DISPONIBLE, "$origin no encontró el modelo/ruta (HTTP 404).", retryable = true)
+                    LlmException(
+                        LlmErrorCode.MODELO_NO_DISPONIBLE,
+                        "$origin no encontró el modelo/ruta (HTTP 404). Detalle: $snippet",
+                        retryable = true,
+                    )
                 status >= 500 ->
                     LlmException(LlmErrorCode.MODELO_NO_DISPONIBLE, "$origin respondió HTTP $status: $snippet", retryable = true)
                 else ->

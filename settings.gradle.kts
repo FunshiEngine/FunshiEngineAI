@@ -12,4 +12,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "docs-chatbot"
-include(":llm-api", ":backend", ":frontend")
+include(":llm-api", ":backend", ":frontend", ":estructuras")

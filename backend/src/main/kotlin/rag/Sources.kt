@@ -69,11 +69,15 @@ class GithubDocsSource(
     }
 }
 
-/** Lee documentos de una carpeta local (documentación interna). */
-class LocalDocsSource(private val dir: Path, private val exts: Set<String>) {
+/** Lee documentos de una carpeta local (documentación interna o del motor). */
+class LocalDocsSource(
+    private val dir: Path,
+    private val exts: Set<String>,
+    /** Etiqueta de citación en el chat (ej. "interno/internal-docs", "motor/gemini"). */
+    private val label: String = "interno/${dir.fileName}",
+) {
     fun load(): List<Doc> {
         if (!Files.isDirectory(dir)) return emptyList()
-        val label = "interno/${dir.fileName}"
         return Files.walk(dir).use { s ->
             s.filter { Files.isRegularFile(it) && it.extension.lowercase() in exts && Files.size(it) < 2_000_000 }
                 .map { Doc(label, dir.relativize(it).toString().replace('\\', '/'), String(Files.readAllBytes(it), UTF_8)) }

@@ -25,6 +25,8 @@ import java.util.concurrent.TimeUnit
 class LocalServerManager(private val cfg: LlmConfig, private val logDir: Path) {
 
     private var process: Process? = null
+    /** Último error de preparación (clon/compilar) para enriquecer un fallo de arranque. */
+    private var setupHint: String? = null
     /** Puerto efectivamente usado (puede diferir del configurado si estaba ocupado). */
     var boundPort: Int = cfg.localPort
         private set
@@ -38,15 +40,38 @@ class LocalServerManager(private val cfg: LlmConfig, private val logDir: Path) {
         false
     }
 
+    /**
+     * true si hay un servidor sano y además sirve [model] (comprueba
+     * `/v1/models`). Sin esta comprobación, un llama-server que quedó de otra
+     * sesión/modelo se reutilizaba y el cambio de modelo no tenía efecto.
+     */
+    private fun healthyFor(model: Path?): Boolean {
+        if (!healthy()) return false
+        if (model == null) return true
+        return try {
+            val c = URI("http://127.0.0.1:$boundPort/v1/models").toURL().openConnection() as HttpURLConnection
+            c.connectTimeout = 1500
+            c.readTimeout = 1500
+            if (c.responseCode != 200) return false
+            val body = c.inputStream.bufferedReader().use { it.readText() }
+            body.contains(model.fileName.toString()) || body.contains(model.toString())
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     suspend fun start(
         model: Path,
         onStatus: (String) -> Unit,
         onSetup: (LlamaSetupProgress) -> Unit = { onStatus(it.message) },
     ) = withContext(Dispatchers.IO) {
-        if (healthy()) {
+        if (healthyFor(model)) {
             onStatus("Servidor local ya activo en :$boundPort")
+            onSetup(LlamaSetupProgress(LlamaSetupStage.START, 100, "Servidor local ya activo en :$boundPort"))
             return@withContext
         }
+        // Sano pero con OTRO modelo y además es nuestro proceso: se reinicia.
+        if (healthy() && process != null) stop()
         Files.createDirectories(logDir)
         val log = logDir.resolve("llama-server.log")
 
@@ -78,9 +103,10 @@ class LocalServerManager(private val cfg: LlmConfig, private val logDir: Path) {
         } catch (e: IOException) {
             throw LlmException(
                 LlmErrorCode.NO_CONFIGURADO,
-                "No pude ejecutar '$binary'. Si no tienes llama-server, activa " +
+                "No pude ejecutar '$binary'. Si no tienes llama-server, deja activa " +
                     "llm.buildFromSource=true para clonarlo y compilarlo (necesitas git y cmake). " +
-                    "O ajusta llm.llamaServerPath en la config. (${e.message})",
+                    "O ajusta llm.llamaServerPath en la config. (${e.message})" +
+                    (setupHint?.let { "\nNota: $it" } ?: ""),
                 retryable = false,
                 cause = e,
             )
@@ -98,14 +124,17 @@ class LocalServerManager(private val cfg: LlmConfig, private val logDir: Path) {
                     retryable = false,
                 )
             }
-            if (healthy()) {
+            if (healthyFor(model)) {
                 onStatus("Modelo cargado ✔")
+                onSetup(LlamaSetupProgress(LlamaSetupStage.START, 100, "Modelo cargado ✔"))
                 return@withContext
             }
             // Refleja el avance real del log (porcentaje de carga) si cambió.
-            val s = logPercent(log)?.let { "Cargando modelo… $it%" } ?: "Cargando modelo en memoria…"
+            val pct = logPercent(log)
+            val s = pct?.let { "Cargando modelo en memoria… $it%" } ?: "Cargando modelo en memoria…"
             if (s != lastStatus) {
                 onStatus(s)
+                onSetup(LlamaSetupProgress(LlamaSetupStage.START, pct, s))
                 lastStatus = s
             }
             delay(300) // poll 300 ms, como SAI
@@ -177,6 +206,7 @@ class LocalServerManager(private val cfg: LlmConfig, private val logDir: Path) {
      * 3. `llama-server[.exe]` del PATH (Windows necesita el sufijo).
      */
     private suspend fun resolveBinary(onSetup: (LlamaSetupProgress) -> Unit): String {
+        setupHint = null
         val isWindows = System.getProperty("os.name").lowercase().contains("win")
         val exe = if (isWindows) ".exe" else ""
         val explicit = cfg.llamaServerPath.trim()
@@ -199,7 +229,9 @@ class LocalServerManager(private val cfg: LlmConfig, private val logDir: Path) {
             return manager.ensureReady(onSetup)
         } catch (e: LlmException) {
             if (e.code != LlmErrorCode.NO_CONFIGURADO) throw e
-            // Sin repo ni build: caemos al PATH como antes.
+            // Sin repo ni build: caemos al PATH, pero guardamos el motivo real
+            // para que un fallo posterior lo explique (evita mensajes engañosos).
+            setupHint = e.message
         }
         return "llama-server$exe"
     }

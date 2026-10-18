@@ -45,8 +45,24 @@ data class RagConfig(
     val historyTurns: Int = 6
 )
 
+/**
+ * Perfil de color guardado por el usuario (pestaña Configuración).
+ * Permite guardar combinaciones (tema + acento) y re-aplicarlas en un clic.
+ */
 @Serializable
-data class AppConfig(val llm: LlmConfig = LlmConfig(), val rag: RagConfig = RagConfig()) {
+data class ColorProfile(
+    val name: String,
+    val dark: Boolean,
+    val accent: Int,
+)
+
+@Serializable
+data class AppConfig(
+    val llm: LlmConfig = LlmConfig(),
+    val rag: RagConfig = RagConfig(),
+    /** Perfiles de color guardados por el usuario (tema + acento con nombre). */
+    val uiColorProfiles: List<ColorProfile> = emptyList(),
+) {
     companion object {
         /** Carga la config; si es la primera vez crea config, system prompt y carpeta de docs internas. */
         fun loadOrCreate(): AppConfig {
@@ -65,8 +81,32 @@ data class AppConfig(val llm: LlmConfig = LlmConfig(), val rag: RagConfig = RagC
                 Files.createDirectories(internal)
                 Files.writeString(internal.resolve("bienvenida.md"), "# Bienvenida\n\nColoca aquí tus documentos internos (.md, .txt, .rst, .adoc).\n")
             }
-            return AppJson.decodeFromString(Files.readString(file))
+            val cfg = AppJson.decodeFromString<AppConfig>(Files.readString(file)).migrate()
+            // buildFromSource SIEMPRE activo: sin él, el primer arranque local en una
+            // máquina sin llama.cpp falla ("no tengo llama-server"). Si una config
+            // vieja lo traía en false, se reactiva y persiste (el toggle ya no existe).
+            return if (cfg.llm.buildFromSource) {
+                cfg
+            } else {
+                cfg.copy(llm = cfg.llm.copy(buildFromSource = true)).save()
+            }
         }
+    }
+
+    /**
+     * Migraciones de una sola vez por instalación (según [LlmConfig.configVersion]).
+     * v1 → v2: activa `buildFromSource` (en v1 quedaba en false y el arranque local
+     * nunca clonaba/compilaba llama.cpp: el síntoma era "no tengo llama-server").
+     */
+    fun migrate(): AppConfig {
+        if (llm.configVersion >= LlmConfig.CURRENT_CONFIG_VERSION) return this
+        var l = llm
+        if (l.configVersion < 2) {
+            l = l.copy(buildFromSource = true, configVersion = LlmConfig.CURRENT_CONFIG_VERSION)
+        } else {
+            l = l.copy(configVersion = LlmConfig.CURRENT_CONFIG_VERSION)
+        }
+        return copy(llm = l).save()
     }
 
     /** Persiste la config actual (la usa el gestor de modelos/APIs). */

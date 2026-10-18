@@ -12,22 +12,20 @@ import androidx.compose.ui.window.rememberWindowState
 
 fun main() = application {
     val vm = remember { ChatViewModel() }
-    // Tema dinámico: claro/oscuro + color de acento elegido por el usuario.
-    val scheme by remember {
-        mutableStateOf(
-            if (vm.isDark) darkColorScheme(primary = Color(vm.accentColor))
-            else lightColorScheme(primary = Color(vm.accentColor)),
-        )
-    }
     Window(
         onCloseRequest = { vm.shutdown(); exitApplication() },
         title = "Docs Chatbot",
         state = rememberWindowState(width = 950.dp, height = 720.dp),
     ) {
+        // Tema dinámico: se lee el estado del ViewModel directamente en cada
+        // composition; cualquier cambio (setTheme) repinta todo al instante.
+        val scheme = if (vm.isDark) {
+            darkColorScheme(primary = Color(vm.accentColor))
+        } else {
+            lightColorScheme(primary = Color(vm.accentColor))
+        }
         MaterialTheme(colorScheme = scheme) {
-            ChatScreen(vm, onThemeChange = { theme ->
-                vm.setTheme(theme.dark, theme.accent)
-            })
+            ChatScreen(vm)
         }
     }
 }
