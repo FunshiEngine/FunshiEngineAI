@@ -68,4 +68,12 @@ data class AppConfig(val llm: LlmConfig = LlmConfig(), val rag: RagConfig = RagC
             return AppJson.decodeFromString(Files.readString(file))
         }
     }
+
+    /** Persiste la config actual (la usa el gestor de modelos/APIs). */
+    fun save(): AppConfig {
+        val file = AppPaths.resolve("config/app-config.json")
+        Files.createDirectories(file.parent)
+        Files.writeString(file, AppJson.encodeToString(this))
+        return this
+    }
 }

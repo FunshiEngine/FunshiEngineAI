@@ -13,6 +13,29 @@ enum class LlmMode {
 @Serializable
 data class ChatMessage(val role: String, val content: String)
 
+/** Un modelo GGUF descargable de Hugging Face (catálogo para el gestor de modelos). */
+@Serializable
+data class ModelPreset(
+    val id: String,
+    val label: String,
+    val repo: String,
+    val file: String,
+    /** Tamaño aproximado en GB (para mostrar en la UI). */
+    val sizeGb: Double = 0.0,
+    val description: String = "",
+)
+
+/** Una API OpenAI-compatible guardada (colección para el selector de APIs). */
+@Serializable
+data class ApiPreset(
+    val id: String,
+    val label: String,
+    val baseUrl: String,
+    /** Vacío = sin clave (endpoints localhost como Ollama/LM Studio). */
+    val apiKey: String = "",
+    val model: String = "",
+)
+
 @Serializable
 data class LlmConfig(
     val mode: LlmMode = LlmMode.LOCAL,
@@ -30,6 +53,20 @@ data class LlmConfig(
     val modelsDir: String = "models",
     /** Ruta al binario; vacío = autodetectar (`llama-server[.exe]` en PATH y candidatos). */
     val llamaServerPath: String = "",
+    /** Repo git de llama.cpp a clonar (como SAI_LLM_LOCALHOST_REPO_URL de SAI). */
+    val llamaRepoUrl: String = "https://github.com/ggml-org/llama.cpp.git",
+    /** Rama/tag a clonar (vacío = HEAD por defecto). */
+    val llamaRepoVersion: String = "",
+    /** Directorio del clon (vacío = <app-home>/llama.cpp). */
+    val llamaRepoDir: String = "",
+    /** Binario git (default "git"). */
+    val gitBin: String = "git",
+    /** true = compila llama-server con cmake si no hay binario (SAI_LLM_LOCALHOST_BUILD). */
+    val buildFromSource: Boolean = false,
+    /** Catálogo de modelos locales (el activo lo marcan hfRepo/hfFile). */
+    val modelCatalog: List<ModelPreset> = defaultModelCatalog(),
+    /** Colección de APIs OpenAI-compatibles (la activa la marcan remoteBaseUrl/apiKey/modelName). */
+    val apiPresets: List<ApiPreset> = defaultApiPresets(),
     val localPort: Int = 8081,
     val contextSize: Int = 8192,
     val gpuLayers: Int = 0,
@@ -85,6 +122,44 @@ data class LlmConfig(
         const val MIN_CONTEXT = 128
         /** Máximo de contexto — SAI valida hasta 40 960; llama-server puede más, pero acotamos. */
         const val MAX_CONTEXT = 40_960
+
+        /**
+         * Catálogo inicial: el Phi-4-mini de SAI (el que ya usamos) + dos
+         * alternativas GGUF populares del mismo formato. El usuario puede
+         * agregar más desde la pantalla de modelos (se guardan en la config).
+         */
+        fun defaultModelCatalog(): List<ModelPreset> = listOf(
+            ModelPreset(
+                id = "phi-4-mini",
+                label = "Phi-4-mini-instruct (Q4_K_M) · el de SAI",
+                repo = "unsloth/Phi-4-mini-instruct-GGUF",
+                file = "Phi-4-mini-instruct-Q4_K_M.gguf",
+                sizeGb = 2.4,
+                description = "Modelo por defecto: rápido y bueno en español para docs.",
+            ),
+            ModelPreset(
+                id = "qwen3-4b",
+                label = "Qwen3-4B-instruct (Q4_K_M)",
+                repo = "unsloth/Qwen3-4B-Instruct-2507-GGUF",
+                file = "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+                sizeGb = 2.6,
+                description = "Alternativa multilingüe compacta.",
+            ),
+            ModelPreset(
+                id = "llama-3.2-3b",
+                label = "Llama-3.2-3B-instruct (Q4_K_M)",
+                repo = "unsloth/Llama-3.2-3B-Instruct-GGUF",
+                file = "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+                sizeGb = 2.0,
+                description = "El más liviano del catálogo.",
+            ),
+        )
+
+        /** Colección inicial de APIs: Ollama y LM Studio locales (sin clave). */
+        fun defaultApiPresets(): List<ApiPreset> = listOf(
+            ApiPreset(id = "ollama", label = "Ollama local", baseUrl = "http://localhost:11434/v1", model = "phi4-mini"),
+            ApiPreset(id = "lmstudio", label = "LM Studio local", baseUrl = "http://localhost:1234/v1", model = "local-model"),
+        )
 
         /** Hosts que no necesitan clave (Ollama, LM Studio, llama-server en loopback). */
         private fun isLocalhostUrl(url: String): Boolean {

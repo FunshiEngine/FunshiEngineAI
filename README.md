@@ -65,11 +65,28 @@ Todo se configura en `app-home/config/app-config.json` (se crea solo en el prime
     "maxTokens": 1024,
     "chatTimeoutMs": 90000,         // timeout por petición (como SAI)
     "loadTimeoutMs": 180000,        // espera máxima a llama-server
-    "llamaServerPath": "",          // vacío = autodetecta llama-server[.exe] en PATH
+    "llamaServerPath": "",          // vacío = autodetecta (clon compilado → PATH)
+    "llamaRepoUrl": "https://github.com/ggml-org/llama.cpp.git",
+    "llamaRepoVersion": "",         // rama/tag (vacío = HEAD)
+    "llamaRepoDir": "",             // vacío = <app-home>/llama.cpp
+    "gitBin": "git",
+    "buildFromSource": false,       // true = clona y compila llama-server con cmake
     "localPort": 8081,              // si está ocupado, prueba los 19 siguientes
     "modelsDir": "models",
-    "hfToken": ""                   // solo si el repo de HF lo exige
+    "hfToken": "",                  // solo si el repo de HF lo exige
+    "modelCatalog": [ … ],          // catálogo de modelos (pantalla Modelos)
+    "apiPresets": [ … ]             // colección de APIs (pantalla APIs)
   },
+```
+
+El front tiene 4 pantallas (pestañas **Chat / Modelos / APIs / Estado**):
+
+- **Estado** (carga): clonar llama.cpp con `%`, compilar con cmake con `%`,
+  descargar el GGUF con MB y `%`, arrancar el servidor — con botón Reintentar.
+- **Modelos**: catálogo con Descargar (barra +Cancelar), Activar (reinicia el
+  servidor con ese modelo), agregar repo/archivo de HF (con "Listar .gguf").
+- **APIs**: colección de endpoints OpenAI-compatibles (Ollama/LM Studio de
+  ejemplo), Activar (modo REMOTO) y "Volver a modelo local".
   "rag": {
     "githubSources": [ { "owner": "…", "repo": "…", "ref": "", "paths": ["docs/"] } ],
     "internalDocsDirs": ["internal-docs"],

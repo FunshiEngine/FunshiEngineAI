@@ -38,7 +38,11 @@ class LocalServerManager(private val cfg: LlmConfig, private val logDir: Path) {
         false
     }
 
-    suspend fun start(model: Path, onStatus: (String) -> Unit) = withContext(Dispatchers.IO) {
+    suspend fun start(
+        model: Path,
+        onStatus: (String) -> Unit,
+        onSetup: (LlamaSetupProgress) -> Unit = { onStatus(it.message) },
+    ) = withContext(Dispatchers.IO) {
         if (healthy()) {
             onStatus("Servidor local ya activo en :$boundPort")
             return@withContext
@@ -58,7 +62,7 @@ class LocalServerManager(private val cfg: LlmConfig, private val logDir: Path) {
             onStatus("Puerto ${cfg.localPort} ocupado; usando $port")
         }
 
-        val binary = resolveBinary()
+        val binary = resolveBinary(onSetup)
         val cmd = listOf(
             binary,
             "-m", model.toString(),
@@ -74,7 +78,9 @@ class LocalServerManager(private val cfg: LlmConfig, private val logDir: Path) {
         } catch (e: IOException) {
             throw LlmException(
                 LlmErrorCode.NO_CONFIGURADO,
-                "No pude ejecutar '$binary'. Instala llama.cpp y ajusta llm.llamaServerPath en la config. (${e.message})",
+                "No pude ejecutar '$binary'. Si no tienes llama-server, activa " +
+                    "llm.buildFromSource=true para clonarlo y compilarlo (necesitas git y cmake). " +
+                    "O ajusta llm.llamaServerPath en la config. (${e.message})",
                 retryable = false,
                 cause = e,
             )
@@ -165,11 +171,12 @@ class LocalServerManager(private val cfg: LlmConfig, private val logDir: Path) {
     }
 
     /**
-     * Binario a ejecutar (patrón `resolveBinary()` de SAI): la ruta explícita
-     * `llamaServerPath` si existe; si está vacía, `llama-server[.exe]` según
-     * plataforma (Windows necesita el sufijo para resolverlo desde PATH).
+     * Binario a ejecutar:
+     * 1. `llamaServerPath` explícita si existe (patrón `resolveBinary()` de SAI).
+     * 2. Binario compilado dentro del clon (`LlamaManager`).
+     * 3. `llama-server[.exe]` del PATH (Windows necesita el sufijo).
      */
-    private fun resolveBinary(): String {
+    private suspend fun resolveBinary(onSetup: (LlamaSetupProgress) -> Unit): String {
         val isWindows = System.getProperty("os.name").lowercase().contains("win")
         val exe = if (isWindows) ".exe" else ""
         val explicit = cfg.llamaServerPath.trim()
@@ -184,6 +191,15 @@ class LocalServerManager(private val cfg: LlmConfig, private val logDir: Path) {
             // Ruta explícita que no existe: la devolvemos igual para que el error
             // de ProcessBuilder la mencione (mensaje claro en NO_CONFIGURADO).
             return withExe
+        }
+        // Sin ruta explícita: si hay clon compilado (o se puede compilar), va
+        // primero — igual que SAI busca en el repo antes de rendirse.
+        val manager = LlamaManager(cfg, logDir.parent ?: java.nio.file.Paths.get("."))
+        try {
+            return manager.ensureReady(onSetup)
+        } catch (e: LlmException) {
+            if (e.code != LlmErrorCode.NO_CONFIGURADO) throw e
+            // Sin repo ni build: caemos al PATH como antes.
         }
         return "llama-server$exe"
     }

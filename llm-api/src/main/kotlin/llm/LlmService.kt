@@ -15,7 +15,10 @@ class LlmService(private val cfg: LlmConfig, private val baseDir: Path) {
     private val server = LocalServerManager(cfg, baseDir.resolve("logs"))
     private var gateway: LlmGateway? = null
 
-    suspend fun start(onStatus: (String) -> Unit): LlmGateway {
+    suspend fun start(
+        onStatus: (String) -> Unit,
+        onSetup: (LlamaSetupProgress) -> Unit = { onStatus(it.message) },
+    ): LlmGateway {
         val errors = cfg.validate()
         if (errors.isNotEmpty()) {
             throw LlmException(
@@ -43,7 +46,7 @@ class LlmService(private val cfg: LlmConfig, private val baseDir: Path) {
                         }
                     }
                 }
-                server.start(model, onStatus)
+                server.start(model, onStatus, onSetup)
                 // Puerto efectivo: el escaneo pudo moverlo si el configurado estaba ocupado.
                 "http://127.0.0.1:${server.boundPort}/v1"
             }
