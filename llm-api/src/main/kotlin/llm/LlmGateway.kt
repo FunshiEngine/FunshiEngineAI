@@ -32,8 +32,9 @@ interface LlmGateway {
  * Mejoras sobre un cliente básico:
  *  - Errores tipados ([LlmException]) clasificando status HTTP (401→clave,
  *    429→cuota, 400+tokens→contexto, 5xx→servidor) en vez de `error(...)` crudo.
- *  - Timeout por petición (`chatTimeoutMs`, 90 s) sobre el flujo completo,
- *    para que un servidor colgado no deje la petición zombi.
+ *  - Timeout por petición opcional (`chatTimeoutMs`; 0 = sin límite, que es
+ *    lo por defecto) sobre el flujo completo, para que un servidor colgado
+ *    no deje la petición zombi cuando se configura.
  */
 class OpenAiCompatibleGateway(
     private val baseUrl: String,
@@ -116,33 +117,36 @@ class OpenAiCompatibleGateway(
             }
         }
 
-        // Timeout total por petición, también en streaming.
-        // El timeout se reporta como TIMEOUT y los fallos de transporte como
+        // Timeout opcional por petición, también en streaming: con
+        // chatTimeoutMs = 0 (por defecto) no hay límite de tiempo y una
+        // respuesta larga no se corta. Los errores de timeout se reportan
+        // como TIMEOUT y los fallos de transporte como
         // MODELO_NO_DISPONIBLE/SERVIDOR_CAIDO (nunca como error crudo).
-        try {
-            withTimeout(chatTimeoutMs) {
-                client.preparePost("${baseUrl.trimEnd('/')}/chat/completions") {
-                    contentType(ContentType.Application.Json)
-                    if (apiKey.isNotBlank()) bearerAuth(apiKey)
-                    setBody(body.toString())
-                }.execute { resp ->
-                    if (!resp.status.isSuccess()) {
-                        throw LlmException.fromHttp(resp.status.value, resp.bodyAsText(), local = false)
-                    }
-                    val channel = resp.bodyAsChannel()
-                    while (true) {
-                        val line = channel.readUTF8Line() ?: break
-                        if (!line.startsWith("data:")) continue
-                        val data = line.removePrefix("data:").trim()
-                        if (data == "[DONE]") break
-                        val token = json.parseToJsonElement(data).jsonObject["choices"]
-                            ?.jsonArray?.firstOrNull()?.jsonObject
-                            ?.get("delta")?.jsonObject
-                            ?.get("content")?.jsonPrimitive?.contentOrNull
-                        if (!token.isNullOrEmpty()) emit(token)
-                    }
+        val request: suspend () -> Unit = {
+            client.preparePost("${baseUrl.trimEnd('/')}/chat/completions") {
+                contentType(ContentType.Application.Json)
+                if (apiKey.isNotBlank()) bearerAuth(apiKey)
+                setBody(body.toString())
+            }.execute { resp ->
+                if (!resp.status.isSuccess()) {
+                    throw LlmException.fromHttp(resp.status.value, resp.bodyAsText(), local = false)
+                }
+                val channel = resp.bodyAsChannel()
+                while (true) {
+                    val line = channel.readUTF8Line() ?: break
+                    if (!line.startsWith("data:")) continue
+                    val data = line.removePrefix("data:").trim()
+                    if (data == "[DONE]") break
+                    val token = json.parseToJsonElement(data).jsonObject["choices"]
+                        ?.jsonArray?.firstOrNull()?.jsonObject
+                        ?.get("delta")?.jsonObject
+                        ?.get("content")?.jsonPrimitive?.contentOrNull
+                    if (!token.isNullOrEmpty()) emit(token)
                 }
             }
+        }
+        try {
+            if (chatTimeoutMs > 0) withTimeout(chatTimeoutMs) { request() } else request()
         } catch (e: LlmException) {
             throw e
         } catch (e: TimeoutCancellationException) {

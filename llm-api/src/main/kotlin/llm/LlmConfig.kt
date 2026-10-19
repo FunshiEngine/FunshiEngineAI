@@ -91,9 +91,9 @@ data class LlmConfig(
     val temperature: Double = 0.2,
     val maxTokens: Int = 1024,
 
-    // ---- Timeouts (ms) — chat 90 s, carga 180 s ----
-    /** Timeout de cada petición de chat (STREAM incluido). */
-    val chatTimeoutMs: Long = 90_000,
+    // ---- Timeouts (ms) — chat SIN límite por defecto, carga 180 s ----
+    /** Timeout de cada petición de chat (STREAM incluido). 0 = sin límite. */
+    val chatTimeoutMs: Long = 0,
     /** Espera máxima a que `llama-server` esté sano tras arrancarlo. */
     val loadTimeoutMs: Long = 180_000,
 
@@ -144,7 +144,7 @@ data class LlmConfig(
             errors += "llm.contextSize fuera de rango [$MIN_CONTEXT, $MAX_CONTEXT] (actual: $contextSize)."
         }
         if (localPort !in 1..65535) errors += "llm.localPort fuera de rango [1, 65535] (actual: $localPort)."
-        if (chatTimeoutMs <= 0) errors += "llm.chatTimeoutMs debe ser mayor que 0 (actual: $chatTimeoutMs)."
+        if (chatTimeoutMs < 0) errors += "llm.chatTimeoutMs no puede ser negativo (0 = sin límite; actual: $chatTimeoutMs)."
         if (loadTimeoutMs <= 0) errors += "llm.loadTimeoutMs debe ser mayor que 0 (actual: $loadTimeoutMs)."
         when (mode) {
             LlmMode.LOCAL -> {
@@ -182,8 +182,9 @@ data class LlmConfig(
          * Versión actual del esquema de config.
          * v1: `buildFromSource=false` por defecto (arranque local sin compilar).
          * v2: `buildFromSource=true` por defecto y sin APIs localhost prefijadas.
+         * v3: `chatTimeoutMs=0` — sin límite de tiempo por respuesta.
          */
-        const val CURRENT_CONFIG_VERSION = 2
+        const val CURRENT_CONFIG_VERSION = 3
 
         /**
          * Catálogo inicial: el Phi-4-mini (el por defecto) + dos

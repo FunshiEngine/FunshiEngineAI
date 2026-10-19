@@ -63,7 +63,7 @@ Todo se configura en `app-home/config/app-config.json` (se crea solo en el prime
     "gpuLayers": 0,                   // >0 si tienes GPU con VRAM suficiente
     "temperature": 0.2,
     "maxTokens": 1024,
-    "chatTimeoutMs": 90000,         // timeout por petición
+    "chatTimeoutMs": 0,             // 0 = sin límite de tiempo por respuesta
     "loadTimeoutMs": 180000,        // espera máxima a llama-server
     "llamaServerPath": "",          // vacío = autodetecta (clon compilado → PATH)
     "llamaRepoUrl": "https://github.com/ggml-org/llama.cpp.git",

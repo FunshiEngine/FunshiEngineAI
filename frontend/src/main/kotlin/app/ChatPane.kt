@@ -21,6 +21,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -39,22 +41,51 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+/** Pixeles "de más" al hacer scroll-to-bottom: el último mensaje suele ser más alto que el viewport. */
+private const val SCROLL_PX_TO_END = 1_000_000f
+
 /** Chat con lista de conversaciones, scrollbar, cancelar, editar y borrar. */
 @Composable
 fun ChatPane(vm: ChatViewModel) {
     var input by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
+    val focusRequester = remember { FocusRequester() }
     /** Índice del mensaje de usuario que se está editando (-1 = ninguno). */
     var editingIndex by remember { mutableStateOf(-1) }
     var editText by remember { mutableStateOf("") }
 
+    /** ¿El último mensaje está a la vista? (si el usuario se fue a leer arriba, no lo arrastramos). */
+    fun nearBottom(): Boolean {
+        val info = listState.layoutInfo
+        val lastVisible = info.visibleItemsInfo.lastOrNull() ?: return true
+        return lastVisible.index >= info.totalItemsCount - 1
+    }
+
+    /** Baja hasta el final real de la lista (el último mensaje puede ser más alto que el viewport). */
+    suspend fun scrollToBottom() {
+        val last = listState.layoutInfo.totalItemsCount - 1
+        if (last < 0) return
+        listState.scrollToItem(last)
+        listState.scroll { scrollBy(SCROLL_PX_TO_END) }
+    }
+
+    // Al entrar al chat o cambiar de conversación: abajo del todo.
+    LaunchedEffect(vm.activeChatId) {
+        if (vm.messages.isNotEmpty()) scrollToBottom()
+    }
+
+    // Mientras la IA responde, el chat va bajando con la respuesta
+    // (sólo si el usuario no se fue a leer hacia arriba).
     LaunchedEffect(vm.messages.size, vm.messages.lastOrNull()?.text?.length) {
-        if (vm.messages.isNotEmpty()) listState.scrollToItem(vm.messages.lastIndex)
+        if (vm.messages.isNotEmpty() && nearBottom()) scrollToBottom()
     }
 
     fun submit() {
         vm.send(input)
         input = ""
+        // El foco se queda en el redactor: si la IA está respondiendo, el
+        // mensaje se encola y se podrá seguir escribiendo.
+        if (vm.ready) focusRequester.requestFocus()
     }
 
     Row(Modifier.fillMaxSize()) {
@@ -114,14 +145,15 @@ fun ChatPane(vm: ChatViewModel) {
             // Barra de envío (fija abajo, dentro del área de contenido)
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Surface(color = MaterialTheme.colorScheme.surface) {
-                Row(
-                    Modifier.fillMaxWidth().padding(12.dp),
-                    verticalAlignment = Alignment.Bottom,
-                ) {
+                Column(Modifier.fillMaxWidth()) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(12.dp),
+                        verticalAlignment = Alignment.Bottom,
+                    ) {
                     OutlinedTextField(
                         value = input,
                         onValueChange = { input = it },
-                        modifier = Modifier.weight(1f).onPreviewKeyEvent { e ->
+                        modifier = Modifier.weight(1f).focusRequester(focusRequester).onPreviewKeyEvent { e ->
                             if (e.key == androidx.compose.ui.input.key.Key.Enter &&
                                 e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown &&
                                 !e.isShiftPressed
@@ -131,11 +163,17 @@ fun ChatPane(vm: ChatViewModel) {
                         },
                         placeholder = {
                             Text(
-                                if (vm.ready) "Escribí tu mensaje… (/model, /thinking, /power)"
-                                else "Preparando…"
+                                when {
+                                    !vm.ready -> "Preparando…"
+                                    // Con la IA respondiendo el campo sigue activo: lo que
+                                    // se escriba se encola y se envía junto al terminar.
+                                    vm.busy -> "Escribí tu mensaje… (se encolará hasta que termine la respuesta)"
+                                    else -> "Escribí tu mensaje… (/help para ver comandos)"
+                                }
                             )
                         },
-                        enabled = vm.ready && !vm.busy,
+                        // Habilitado aunque la IA esté respondiendo: permite encolar.
+                        enabled = vm.ready,
                         maxLines = 5,
                     )
                     Spacer(Modifier.width(8.dp))
@@ -145,6 +183,22 @@ fun ChatPane(vm: ChatViewModel) {
                         Button(onClick = vm::cancel) { Text("Cancelar envío") }
                     } else {
                         Button(onClick = ::submit, enabled = vm.ready && input.isNotBlank()) { Text("Enviar") }
+                    }
+                    }
+                    // Cola de mensajes escritos mientras la IA respondía.
+                    if (vm.queuedCount > 0) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "${vm.queuedCount} mensaje(s) en cola — se enviarán juntos al terminar la respuesta",
+                                Modifier.weight(1f),
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            TextButton(onClick = vm::clearQueue) { Text("Descartar") }
+                        }
                     }
                 }
             }

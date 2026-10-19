@@ -42,6 +42,8 @@ class ChatViewModel {
     private var chatJob: Job? = null
     /** Cola de mensajes pendientes mientras no hay engine listo. */
     private val pendingMessages = mutableListOf<Pair<String, List<ChatMessage>>>()
+    /** Textos escritos mientras la IA responde; se envían juntos al terminar. */
+    private val sendQueue = mutableListOf<String>()
 
     var screen by mutableStateOf(Screen.CHAT)  // ¡Chat visible YA!
         private set
@@ -55,6 +57,9 @@ class ChatViewModel {
         private set
     /** Hay mensajes esperando en cola (modelo aún cargando) → se puede cancelar el envío. */
     var queued by mutableStateOf(false)
+        private set
+    /** Mensajes escritos mientras la IA responde (se envían juntos al terminar). */
+    var queuedCount by mutableStateOf(0)
         private set
     /** Error visible en banner (distinto del status de carga). */
     var error by mutableStateOf("")
@@ -577,8 +582,16 @@ class ChatViewModel {
     }
 
     fun send(text: String) {
-        if (text.isBlank() || busy) return
+        if (text.isBlank()) return
         val trimmed = text.trim()
+        // La IA está respondiendo: el texto se encola y se enviará junto con
+        // los demás en un solo mensaje (uno debajo del otro) al terminar.
+        if (busy) {
+            sendQueue.add(trimmed)
+            queuedCount = sendQueue.size
+            status = "$queuedCount mensaje(s) en cola — se enviarán juntos al terminar la respuesta."
+            return
+        }
         // Comandos de chat: se procesan localmente, sin tocar el modelo.
         if (trimmed.startsWith("/")) {
             handleCommand(trimmed)
@@ -600,7 +613,7 @@ class ChatViewModel {
     }
 
     /**
-     * Procesa los comandos de chat: /model, /thinking y /power.
+     * Procesa los comandos de chat: /help, /model, /thinking y /power.
      * Se ejecutan sin pasar por el modelo (respuesta local inmediata).
      */
     private fun handleCommand(raw: String) {
@@ -609,17 +622,29 @@ class ChatViewModel {
         val cmd = parts.firstOrNull().orEmpty().lowercase()
         val arg = parts.getOrNull(1)?.lowercase().orEmpty()
         val reply = when (cmd) {
+            "help" -> cmdHelp()
             "model" -> cmdModel(arg)
             "thinking" -> cmdThinking(arg)
             "power" -> cmdPower(arg)
-            else -> "Comando no reconocido: `$raw`.\n\nComandos disponibles:\n" +
-                "· `/model` — lista los modelos del servicio y muestra el activo.\n" +
-                "· `/thinking [off|low|medium|high]` — nivel de razonamiento.\n" +
-                "· `/power [low|medium|high]` — potencia de la respuesta."
+            else -> "Comando no reconocido: `$raw`.\n\n" + cmdHelp()
         }
         updateLast(reply)
         persistActiveChat()
     }
+
+    /** /help — lista de comandos disponibles y qué hace cada uno. */
+    private fun cmdHelp(): String = """
+        Comandos disponibles (se ejecutan al instante, sin tocar el modelo):
+
+        · `/help` — muestra esta ayuda.
+        · `/model` — lista los modelos del servicio activo.
+        · `/model <id>` — cambia el modelo activo al indicado.
+        · `/thinking [off|low|medium|high]` — nivel de razonamiento del modelo.
+        · `/power [low|medium|high]` — potencia de la respuesta (tokens de salida).
+
+        Mientras el modelo responde podés seguir escribiendo: los mensajes
+        se encolan y se envían juntos, uno debajo del otro, al terminar.
+    """.trimIndent()
 
     /** /model — lista modelos del servicio activo (o cambia con `/model <id>`). */
     private fun cmdModel(arg: String): String {
@@ -712,12 +737,34 @@ class ChatViewModel {
             } finally {
                 busy = false
                 persistActiveChat()
+                // Si el usuario escribió mientras respondíamos, todo lo encolado
+                // se envía ahora como UN solo mensaje (uno debajo del otro).
+                flushSendQueue()
             }
         }
     }
 
+    /**
+     * Une los mensajes encolados mientras la IA respondía y los envía como
+     * UN solo texto, con un salto de línea en blanco entre cada uno.
+     * (La cancelación limpia la cola antes, así que no se envía nada.)
+     */
+    private fun flushSendQueue() {
+        if (sendQueue.isEmpty()) return
+        val combined = sendQueue.joinToString("\n\n")
+        sendQueue.clear()
+        queuedCount = 0
+        send(combined)
+    }
+
     /** Cancela la generación en curso (botón Detener) o desencola mensajes pendientes. */
     fun cancel() {
+        // La detención descarta también lo encolado mientras respondía:
+        // si el usuario paró, no se dispara nada automático después.
+        if (sendQueue.isNotEmpty()) {
+            sendQueue.clear()
+            queuedCount = 0
+        }
         chatJob?.cancel()
         if (pendingMessages.isNotEmpty()) {
             pendingMessages.clear()
@@ -727,6 +774,14 @@ class ChatViewModel {
             status = "Envío cancelado."
             persistActiveChat()
         }
+    }
+
+    /** Descarta los mensajes encolados mientras la IA responde. */
+    fun clearQueue() {
+        if (sendQueue.isEmpty()) return
+        sendQueue.clear()
+        queuedCount = 0
+        status = "Cola descartada."
     }
 
     /**

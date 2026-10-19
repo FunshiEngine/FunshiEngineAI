@@ -97,15 +97,14 @@ data class AppConfig(
      * Migraciones de una sola vez por instalación (según [LlmConfig.configVersion]).
      * v1 → v2: activa `buildFromSource` (en v1 quedaba en false y el arranque local
      * nunca clonaba/compilaba llama.cpp: el síntoma era "no tengo llama-server").
+     * v2 → v3: `chatTimeoutMs = 0` — sin límite de tiempo por respuesta (antes 90 s).
      */
     fun migrate(): AppConfig {
         if (llm.configVersion >= LlmConfig.CURRENT_CONFIG_VERSION) return this
         var l = llm
-        if (l.configVersion < 2) {
-            l = l.copy(buildFromSource = true, configVersion = LlmConfig.CURRENT_CONFIG_VERSION)
-        } else {
-            l = l.copy(configVersion = LlmConfig.CURRENT_CONFIG_VERSION)
-        }
+        if (l.configVersion < 2) l = l.copy(buildFromSource = true)
+        if (l.configVersion < 3) l = l.copy(chatTimeoutMs = 0L)
+        l = l.copy(configVersion = LlmConfig.CURRENT_CONFIG_VERSION)
         return copy(llm = l).save()
     }
 

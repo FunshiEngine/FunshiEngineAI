@@ -1,5 +1,33 @@
 # Registro de Cambios - FunshiEngineAI
 
+## v0.4.0 (2026-10-18) — Chat sin límite de tiempo, /help y encolado de mensajes
+
+### ✨ Nuevas Características
+
+#### Sin límite de tiempo por respuesta
+- `chatTimeoutMs` pasa a **0 = sin límite** (antes 90 000 ms): una respuesta larga o un modelo lento ya no se corta con TIMEOUT.
+- `LlmGateway.chatStream()` aplica `withTimeout` **sólo si `chatTimeoutMs > 0`**; con 0 la petición corre sin tope.
+- Validación relajada: `chatTimeoutMs` sólo puede ser negativo para ser inválido (0 es válido).
+- **Migración de config v2 → v3**: las instalaciones existentes con `90000` guardado lo migran a `0` automáticamente.
+
+#### Comando `/help`
+- `/help` lista todos los comandos (`/model`, `/model <id>`, `/thinking`, `/power`) con su uso, sin tocar el modelo.
+- El placeholder del redactor ahora sugiere `/help para ver comandos`.
+
+#### Encolado de mensajes mientras la IA responde
+- El redactor **ya no se bloquea** al enviar: permanece habilitado y con el foco mientras el modelo genera.
+- Lo que se escribe durante la respuesta se **encola** (contador "N mensaje(s) en cola" + botón "Descartar").
+- Al terminar la respuesta, todo lo encolado se envía **como un solo texto**, un mensaje debajo del otro (`joinToString("\n\n")`).
+- "Detener" descarta también la cola (nada se dispara solo después de una cancelación).
+
+### 🔧 Mejoras de UI/UX
+- El chat **baja solo con la respuesta** durante el streaming, salvo que el usuario haya subido a leer (no se lo arrastra).
+- Al entrar al chat o cambiar de conversación, la lista arranca **abajo del todo**.
+- Scroll-to-bottom real: además de `scrollToItem` se empuja el scroll hasta el final del último mensaje (que puede ser más alto que el viewport).
+- El foco se conserva en el redactor tras enviar (botón Enviar o Enter).
+
+---
+
 ## v0.3.0 (2025-10-18) — Motor de inferencia centralizado
 
 ### ✨ Nuevas Características
