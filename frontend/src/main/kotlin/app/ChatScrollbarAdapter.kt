@@ -108,8 +108,16 @@ fun rememberStableChatScrollbarAdapter(
 ): ScrollbarAdapter {
     val sizes = remember(chatId) { mutableStateMapOf<Int, Float>() }
     LaunchedEffect(listState, chatId) {
-        snapshotFlow { listState.layoutInfo.visibleItemsInfo }
-            .collect { visibles ->
+        var lastTotal = 0
+        snapshotFlow { listState.layoutInfo.totalItemsCount to listState.layoutInfo.visibleItemsInfo }
+            .collect { (total, visibles) ->
+                // Si la conversación se ACORTA (borrar mensaje, "Reiniciar",
+                // "Editar y reenviar") los índices corren: un tamaño medido en
+                // el índice N ya no corresponde al mensaje que hoy ocupa ese N
+                // y el total quedaría pisado con medidas viejas. Se empieza de
+                // cero con lo que esté a la vista (se vuelve a medir al toque).
+                if (total < lastTotal) sizes.clear()
+                lastTotal = total
                 for (item in visibles) {
                     val size = item.size.toFloat()
                     if (sizes[item.index] != size) sizes[item.index] = size
