@@ -16,9 +16,13 @@
 
 #### Encolado de mensajes mientras la IA responde
 - El redactor **ya no se bloquea** al enviar: permanece habilitado y con el foco mientras el modelo genera.
-- Lo que se escribe durante la respuesta se **encola** (contador "N mensaje(s) en cola" + botón "Descartar").
+- Lo que se escribe durante la respuesta se **encola** y **se ve en una lista** con cada texto (no sólo un contador), con "Quitar" por mensaje y "Descartar todo".
 - Al terminar la respuesta, todo lo encolado se envía **como un solo texto**, un mensaje debajo del otro (`joinToString("\n\n")`).
 - "Detener" descarta también la cola (nada se dispara solo después de una cancelación).
+
+#### Acciones sobre los mensajes: Copiar y Reiniciar
+- **Copiar**: botón en todas las burbujas (usuario y respuesta de la IA) que copia el contenido al portapapeles.
+- **Reiniciar**: botón en la **última respuesta entregada** por el modelo que la descarta y reenvía el mensaje del usuario que la provocó, conservando el historial previo (misma semántica que "Editar y reenviar": el turno completo se repite). Inactivo mientras el modelo sigue generando.
 
 ### 🔧 Mejoras de UI/UX
 - El chat **baja solo con la respuesta** durante el streaming, salvo que el usuario haya subido a leer (no se lo arrastra).

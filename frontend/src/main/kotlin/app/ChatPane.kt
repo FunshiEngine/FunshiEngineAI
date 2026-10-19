@@ -35,7 +35,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -50,6 +53,7 @@ fun ChatPane(vm: ChatViewModel) {
     var input by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val focusRequester = remember { FocusRequester() }
+    val clipboard = LocalClipboardManager.current
     /** Índice del mensaje de usuario que se está editando (-1 = ninguno). */
     var editingIndex by remember { mutableStateOf(-1) }
     var editText by remember { mutableStateOf("") }
@@ -133,6 +137,15 @@ fun ChatPane(vm: ChatViewModel) {
                                 editingIndex = -1
                             },
                             onDelete = { vm.deleteMessage(index) },
+                            // Copiar: útil sobre todo en la respuesta de la IA.
+                            onCopy = { clipboard.setText(AnnotatedString(m.text)) },
+                            // Reiniciar: sólo sobre la última respuesta entregada.
+                            onRegenerate = if (
+                                m.role == "assistant" && index == vm.messages.lastIndex &&
+                                !vm.busy && !vm.queued && m.text.isNotBlank() && m.text != "…"
+                            ) {
+                                { vm.regenerate(index) }
+                            } else null,
                         )
                     }
                 }
@@ -185,19 +198,37 @@ fun ChatPane(vm: ChatViewModel) {
                         Button(onClick = ::submit, enabled = vm.ready && input.isNotBlank()) { Text("Enviar") }
                     }
                     }
-                    // Cola de mensajes escritos mientras la IA respondía.
-                    if (vm.queuedCount > 0) {
-                        Row(
+                    // Cola de mensajes escritos mientras la IA respondía:
+                    // se ven los textos (no solo un contador), con Quitar por mensaje.
+                    if (vm.queuedMessages.isNotEmpty()) {
+                        Column(
                             Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(
-                                "${vm.queuedCount} mensaje(s) en cola — se enviarán juntos al terminar la respuesta",
-                                Modifier.weight(1f),
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            TextButton(onClick = vm::clearQueue) { Text("Descartar") }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    "${vm.queuedMessages.size} en cola — se enviarán juntos al terminar la respuesta",
+                                    Modifier.weight(1f),
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                TextButton(onClick = vm::clearQueue) { Text("Descartar todo") }
+                            }
+                            vm.queuedMessages.forEachIndexed { i, q ->
+                                Row(
+                                    Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        q,
+                                        Modifier.weight(1f),
+                                        fontSize = 12.sp,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    TextButton(onClick = { vm.removeQueued(i) }) { Text("Quitar") }
+                                }
+                            }
                         }
                     }
                 }
@@ -542,6 +573,8 @@ fun MessageBubble(
     onCancelEdit: () -> Unit,
     onSaveEdit: () -> Unit,
     onDelete: () -> Unit,
+    onCopy: () -> Unit,
+    onRegenerate: (() -> Unit)? = null,
 ) {
     val isUser = m.role == "user"
     Row(
@@ -585,20 +618,30 @@ fun MessageBubble(
                             }
                         }
                     }
-                    // Acciones del mensaje (editar solo en mensajes del usuario).
+                    // Acciones del mensaje: Copiar (cualquier mensaje, sobre todo
+                    // la respuesta de la IA), Editar/Borrar (solo usuario) y
+                    // Reiniciar (solo sobre la última respuesta entregada).
                     Spacer(Modifier.height(6.dp))
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        TextButton(onClick = onCopy) {
+                            Text("Copiar", fontSize = 11.sp)
+                        }
                         if (isUser && editable) {
-                            TextButton(onClick = onEdit, enabled = editable) {
+                            TextButton(onClick = onEdit) {
                                 Text("Editar", fontSize = 11.sp)
                             }
                         }
                         if (editable) {
-                            TextButton(onClick = onDelete, enabled = editable) {
+                            TextButton(onClick = onDelete) {
                                 Text("Borrar", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                        if (onRegenerate != null) {
+                            TextButton(onClick = onRegenerate) {
+                                Text("Reiniciar", fontSize = 11.sp)
                             }
                         }
                     }

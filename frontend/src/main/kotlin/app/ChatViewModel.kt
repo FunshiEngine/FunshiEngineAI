@@ -42,8 +42,6 @@ class ChatViewModel {
     private var chatJob: Job? = null
     /** Cola de mensajes pendientes mientras no hay engine listo. */
     private val pendingMessages = mutableListOf<Pair<String, List<ChatMessage>>>()
-    /** Textos escritos mientras la IA responde; se envían juntos al terminar. */
-    private val sendQueue = mutableListOf<String>()
 
     var screen by mutableStateOf(Screen.CHAT)  // ¡Chat visible YA!
         private set
@@ -59,7 +57,7 @@ class ChatViewModel {
     var queued by mutableStateOf(false)
         private set
     /** Mensajes escritos mientras la IA responde (se envían juntos al terminar). */
-    var queuedCount by mutableStateOf(0)
+    var queuedMessages by mutableStateOf(listOf<String>())
         private set
     /** Error visible en banner (distinto del status de carga). */
     var error by mutableStateOf("")
@@ -587,9 +585,8 @@ class ChatViewModel {
         // La IA está respondiendo: el texto se encola y se enviará junto con
         // los demás en un solo mensaje (uno debajo del otro) al terminar.
         if (busy) {
-            sendQueue.add(trimmed)
-            queuedCount = sendQueue.size
-            status = "$queuedCount mensaje(s) en cola — se enviarán juntos al terminar la respuesta."
+            queuedMessages = queuedMessages + trimmed
+            status = "${queuedMessages.size} mensaje(s) en cola — se enviarán juntos al terminar la respuesta."
             return
         }
         // Comandos de chat: se procesan localmente, sin tocar el modelo.
@@ -750,10 +747,9 @@ class ChatViewModel {
      * (La cancelación limpia la cola antes, así que no se envía nada.)
      */
     private fun flushSendQueue() {
-        if (sendQueue.isEmpty()) return
-        val combined = sendQueue.joinToString("\n\n")
-        sendQueue.clear()
-        queuedCount = 0
+        if (queuedMessages.isEmpty()) return
+        val combined = queuedMessages.joinToString("\n\n")
+        queuedMessages = emptyList()
         send(combined)
     }
 
@@ -761,10 +757,7 @@ class ChatViewModel {
     fun cancel() {
         // La detención descarta también lo encolado mientras respondía:
         // si el usuario paró, no se dispara nada automático después.
-        if (sendQueue.isNotEmpty()) {
-            sendQueue.clear()
-            queuedCount = 0
-        }
+        queuedMessages = emptyList()
         chatJob?.cancel()
         if (pendingMessages.isNotEmpty()) {
             pendingMessages.clear()
@@ -778,10 +771,30 @@ class ChatViewModel {
 
     /** Descarta los mensajes encolados mientras la IA responde. */
     fun clearQueue() {
-        if (sendQueue.isEmpty()) return
-        sendQueue.clear()
-        queuedCount = 0
+        if (queuedMessages.isEmpty()) return
+        queuedMessages = emptyList()
         status = "Cola descartada."
+    }
+
+    /** Quita UN mensaje de la cola (los demás siguen esperando). */
+    fun removeQueued(index: Int) {
+        if (index !in queuedMessages.indices) return
+        queuedMessages = queuedMessages.filterIndexed { i, _ -> i != index }
+        if (queuedMessages.isEmpty()) status = "Cola descartada."
+    }
+
+    /**
+     * Reinicia la respuesta del modelo: quita esa respuesta y reenvía el
+     * mensaje del usuario que la provocó (con el historial previo intacto).
+     * Corta el turno completo: la respuesta vieja y todo lo posterior quedan descartados.
+     */
+    fun regenerate(index: Int) {
+        if (busy || index !in messages.indices || messages[index].role != "assistant") return
+        val userIndex = (index - 1 downTo 0).firstOrNull { messages[it].role == "user" } ?: return
+        val userText = messages[userIndex].text
+        if (userText.isBlank() || userText == "…") return
+        messages = messages.take(userIndex)
+        send(userText)
     }
 
     /**
