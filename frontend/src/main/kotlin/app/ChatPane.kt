@@ -65,9 +65,14 @@ fun ChatPane(vm: ChatViewModel) {
         return lastVisible.index >= info.totalItemsCount - 1
     }
 
-    /** Baja hasta el final real de la lista (el último mensaje puede ser más alto que el viewport). */
+    /**
+     * Baja hasta el final real de la lista (el último mensaje puede ser más
+     * alto que el viewport). Usa el índice de los DATOS (vm.messages), no el
+     * de layoutInfo: justo después de enviar, layoutInfo todavía no midió los
+     * mensajes nuevos y apuntaba al final VIEJO de la conversación.
+     */
     suspend fun scrollToBottom() {
-        val last = listState.layoutInfo.totalItemsCount - 1
+        val last = vm.messages.lastIndex
         if (last < 0) return
         listState.scrollToItem(last)
         listState.scroll { scrollBy(SCROLL_PX_TO_END) }
@@ -78,9 +83,18 @@ fun ChatPane(vm: ChatViewModel) {
         if (vm.messages.isNotEmpty()) scrollToBottom()
     }
 
-    // Mientras la IA responde, el chat va bajando con la respuesta
-    // (sólo si el usuario no se fue a leer hacia arriba).
-    LaunchedEffect(vm.messages.size, vm.messages.lastOrNull()?.text?.length) {
+    // Mensaje NUEVO en la lista (envío del usuario, placeholder de la IA o
+    // cambio de chat): SIEMPRE se ve. No se chequea nearBottom() acá: al
+    // recién agregar ítems, el último visible deja de ser el último de la
+    // lista y el chequeo daba falso (el mensaje salía y no se bajaba a verlo).
+    LaunchedEffect(vm.messages.size) {
+        if (vm.messages.isNotEmpty()) scrollToBottom()
+    }
+
+    // Mientras la IA responde el último mensaje crece SIN cambiar la cantidad
+    // de ítems: el chat sigue bajando sólo si el usuario no se fue a leer
+    // hacia arriba (ahí layoutInfo es confiable, no cambió el conteo).
+    LaunchedEffect(vm.messages.lastOrNull()?.text?.length) {
         if (vm.messages.isNotEmpty() && nearBottom()) scrollToBottom()
     }
 
@@ -330,6 +344,12 @@ private fun ChatListSidebar(vm: ChatViewModel, modifier: Modifier = Modifier) {
                 )
             }
         }
+
+        // Barra de desplazamiento de la lista de chats (visible con muchos chats).
+        VerticalScrollbar(
+            adapter = rememberScrollbarAdapter(listState),
+            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+        )
 
         // Fantasma del item arrastrado, siguiendo al puntero.
         draggedId?.let { id ->

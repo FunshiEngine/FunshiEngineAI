@@ -29,6 +29,12 @@
 - Al entrar al chat o cambiar de conversación, la lista arranca **abajo del todo**.
 - Scroll-to-bottom real: además de `scrollToItem` se empuja el scroll hasta el final del último mensaje (que puede ser más alto que el viewport).
 - El foco se conserva en el redactor tras enviar (botón Enviar o Enter).
+- **Scrollbar en la lista de chats** del sidebar (antes sólo la tenía el área de mensajes).
+
+### 🐛 Correcciones
+- **El mensaje enviado ya siempre se ve**: al enviar, el chat baja al final incondicionalmente; el chequeo "¿está abajo?" sólo se aplica durante el streaming (justo después de agregar mensajes, el layout aún no los medía y el auto-scroll se saltaba el mensaje recién enviado).
+- **Borrar chats funciona mientras la IA responde**: antes `deleteNode()` abortaba en silencio con `busy=true` (el diálogo se cerraba y nada se borraba). Ahora borra chats ajenos sin interrumpir la respuesta y, si el subárbol contiene al chat activo, corta la generación antes de borrar.
+- **Una respuesta cancelada por borrar/cambiar de chat ya no se escribe en otro chat**: los callbacks de streaming guardan el chat de origen y sólo actualizan si el chat activo sigue siendo el mismo.
 
 ---
 

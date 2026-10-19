@@ -315,10 +315,19 @@ class ChatViewModel {
 
     fun nodeName(id: String): String = tree.nameOf(id)
 
-    /** Borra el subárbol [id]. Si el chat activo estaba ahí, salta a otro. */
+    /**
+     * Borra el subárbol [id]. Si el chat activo estaba ahí, salta a otro.
+     * Mientras la IA responde SÓLO se corta la generación si el subárbol
+     * contiene al chat activo: borrar un chat ajeno no interrumpe la
+     * respuesta (antes el borrado entero fallaba en silencio con busy=true).
+     */
     fun deleteNode(id: String) {
-        if (busy) return
         val wasInside = containsActive(id)
+        if (busy && wasInside) {
+            // Corta la generación del chat que se va a borrar: cancel() limpia
+            // la cola y el finally del job pone busy=false solo.
+            cancel()
+        }
         tree.remove(id)
         // Garantiza que siempre quede al menos un chat visible.
         if (tree.firstChatId() == null) {
@@ -714,6 +723,9 @@ class ChatViewModel {
     /** Lógica interna de envío (engine garantizado no-nulo y ready=true). */
     private fun sendInternal(text: String, history: List<ChatMessage>) {
         val eng = engine!!
+        // Chat al que pertenece esta respuesta: si mientras generamos se borra
+        // o cambia de chat, los callbacks NO tocan el chat nuevo (sólo busy).
+        val originChatId = activeChatId
         busy = true
         error = ""
         testResult = ""
@@ -725,15 +737,22 @@ class ChatViewModel {
                     if (useDocs) eng.ask(text, history) else eng.askGeneral(text, history)
                 }
                 val sb = StringBuilder()
-                answer.tokens.collect { sb.append(it); updateLast(sb.toString()) }
-                updateLast(sb.toString(), answer.sources.map { it.label }.distinct())
+                answer.tokens.collect {
+                    sb.append(it)
+                    if (activeChatId == originChatId) updateLast(sb.toString())
+                }
+                if (activeChatId == originChatId) {
+                    updateLast(sb.toString(), answer.sources.map { it.label }.distinct())
+                }
             } catch (e: CancellationException) {
-                updateLast("(cancelado)")
+                if (activeChatId == originChatId) updateLast("(cancelado)")
             } catch (e: Exception) {
-                updateLast("⚠ ${friendly(e)}")
+                if (activeChatId == originChatId) updateLast("⚠ ${friendly(e)}")
             } finally {
                 busy = false
-                persistActiveChat()
+                // Sólo persiste si seguimos en el mismo chat; si no, el historial
+                // ajeno ya quedó guardado por quien lo cambió/borró.
+                if (activeChatId == originChatId) persistActiveChat()
                 // Si el usuario escribió mientras respondíamos, todo lo encolado
                 // se envía ahora como UN solo mensaje (uno debajo del otro).
                 flushSendQueue()
