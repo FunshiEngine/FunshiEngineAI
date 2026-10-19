@@ -30,11 +30,14 @@
 - Scroll-to-bottom real: además de `scrollToItem` se empuja el scroll hasta el final del último mensaje (que puede ser más alto que el viewport).
 - El foco se conserva en el redactor tras enviar (botón Enviar o Enter).
 - **Scrollbar en la lista de chats** del sidebar (antes sólo la tenía el área de mensajes).
+- **Scrollbar de mensajes con largo estable**: el thumb depende sólo del **largo total del chat**, no del mensaje que tiene al lado. El adapter oficial de Compose estima el total como `promedio(ítems visibles) * cantidad`, así que al desplazarse el thumb saltaba de ~32px (respuesta larga a la vista) a ~350px (mensajes cortos). El nuevo `StableChatScrollbarAdapter` acumula el tamaño medido de cada mensaje y estima los no vistos con el promedio de los ya medidos: el total converge al real a medida que se recorre la conversación.
+- El scrollbar de mensajes tiene estilo propio: grosor 12dp, esquinas redondeadas, mínimo 24dp y colores de reposo/hover con la paleta actual.
 
 ### 🐛 Correcciones
 - **El mensaje enviado ya siempre se ve**: al enviar, el chat baja al final incondicionalmente; el chequeo "¿está abajo?" sólo se aplica durante el streaming (justo después de agregar mensajes, el layout aún no los medía y el auto-scroll se saltaba el mensaje recién enviado).
 - **Borrar chats funciona mientras la IA responde**: antes `deleteNode()` abortaba en silencio con `busy=true` (el diálogo se cerraba y nada se borraba). Ahora borra chats ajenos sin interrumpir la respuesta y, si el subárbol contiene al chat activo, corta la generación antes de borrar.
 - **Una respuesta cancelada por borrar/cambiar de chat ya no se escribe en otro chat**: los callbacks de streaming guardan el chat de origen y sólo actualizan si el chat activo sigue siendo el mismo.
+- **No se arrastra al usuario al final mientras la IA escribe**: el flag que gobierna el auto-follow sólo cambia cuando se mueve la **posición** de scroll (subir o bajar del usuario o nuestro). Antes dependía de "¿el último mensaje está a la vista?", y con una respuesta más alta que el viewport ese chequeo se mantenía en true: cada token volvía a arrastrar al fondo y era imposible leer la respuesta mientras se escribía.
 
 ---
 

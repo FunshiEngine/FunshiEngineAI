@@ -1,6 +1,7 @@
 package app
 
 import androidx.compose.foundation.VerticalScrollbar
+import androidx.compose.foundation.ScrollbarStyle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -52,17 +53,35 @@ private const val SCROLL_PX_TO_END = 1_000_000f
 fun ChatPane(vm: ChatViewModel) {
     var input by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
+    val scrollbarAdapter = rememberStableChatScrollbarAdapter(listState, vm.activeChatId)
     val focusRequester = remember { FocusRequester() }
     val clipboard = LocalClipboardManager.current
     /** Índice del mensaje de usuario que se está editando (-1 = ninguno). */
     var editingIndex by remember { mutableStateOf(-1) }
     var editText by remember { mutableStateOf("") }
 
-    /** ¿El último mensaje está a la vista? (si el usuario se fue a leer arriba, no lo arrastramos). */
-    fun nearBottom(): Boolean {
-        val info = listState.layoutInfo
-        val lastVisible = info.visibleItemsInfo.lastOrNull() ?: return true
-        return lastVisible.index >= info.totalItemsCount - 1
+    /**
+     * ¿Seguir el pie del chat mientras la IA escribe? El flag sólo cambia cuando
+     * la POSICIÓN de scroll se mueve (scroll del usuario o nuestro): NO cuando el
+     * último mensaje crece. Con el chequeo anterior («último ítem a la vista») una
+     * respuesta más alta que el viewport mantenía el flag en true y cada token
+     * arrastraba al usuario al fondo: era imposible leer una respuesta larga
+     * mientras se escribía.
+     */
+    val followToBottom = remember { mutableStateOf(true) }
+    LaunchedEffect(listState) {
+        var prev = listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+        snapshotFlow {
+            listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+        }.collect { pos ->
+            if (pos != prev) {
+                val subio = pos.first < prev.first ||
+                    (pos.first == prev.first && pos.second < prev.second)
+                // Subió = dejó de seguir; bajó = sólo sigue si llegó al pie real.
+                followToBottom.value = if (subio) false else !listState.canScrollForward
+                prev = pos
+            }
+        }
     }
 
     /**
@@ -95,7 +114,7 @@ fun ChatPane(vm: ChatViewModel) {
     // de ítems: el chat sigue bajando sólo si el usuario no se fue a leer
     // hacia arriba (ahí layoutInfo es confiable, no cambió el conteo).
     LaunchedEffect(vm.messages.lastOrNull()?.text?.length) {
-        if (vm.messages.isNotEmpty() && nearBottom()) scrollToBottom()
+        if (vm.messages.isNotEmpty() && followToBottom.value) scrollToBottom()
     }
 
     fun submit() {
@@ -164,8 +183,16 @@ fun ChatPane(vm: ChatViewModel) {
                     }
                 }
                 VerticalScrollbar(
-                    adapter = rememberScrollbarAdapter(listState),
+                    adapter = scrollbarAdapter,
                     modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                    style = ScrollbarStyle(
+                        minimalHeight = 24.dp,
+                        thickness = 12.dp,
+                        shape = RoundedCornerShape(6.dp),
+                        hoverDurationMillis = 300,
+                        unhoverColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
+                        hoverColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
+                    ),
                 )
             }
 
