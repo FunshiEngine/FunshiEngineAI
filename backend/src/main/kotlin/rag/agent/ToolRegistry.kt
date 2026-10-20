@@ -1,7 +1,7 @@
 package rag.agent
 
 import kotlinx.serialization.json.JsonObject
-import llm.ToolSpec
+import llm.api.ToolSpec
 
 /**
  * Registro de herramientas disponibles para el modelo.

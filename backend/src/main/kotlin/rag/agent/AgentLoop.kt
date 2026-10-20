@@ -4,10 +4,10 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import llm.ChatMessage
-import llm.LlmChunk
-import llm.LlmGateway
-import llm.ToolSpec
+import llm.api.LlmChunk
+import llm.api.LlmGateway
+import llm.api.ToolSpec
+import llm.config.ChatMessage
 
 /** Eventos del loop, para la UI (texto en vivo y tarjetas de herramientas). */
 sealed class AgentEvent {

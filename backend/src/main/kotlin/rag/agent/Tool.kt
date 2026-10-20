@@ -1,7 +1,7 @@
 package rag.agent
 
 import kotlinx.serialization.json.JsonObject
-import llm.ToolSpec
+import llm.api.ToolSpec
 
 /**
  * Contexto de ejecución de una herramienta: a qué chat pertenece la llamada y

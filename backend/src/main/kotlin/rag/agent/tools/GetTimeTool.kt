@@ -1,13 +1,13 @@
 package rag.agent.tools
 
-import kotlinx.serialization.json.JsonObject
-import llm.ToolSpec
-import rag.agent.Tool
-import rag.agent.ToolContext
-import rag.agent.ToolResult
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlinx.serialization.json.JsonObject
+import llm.api.ToolSpec
+import rag.agent.Tool
+import rag.agent.ToolContext
+import rag.agent.ToolResult
 
 /**
  * Herramienta de prueba del tool-calling (F1): devuelve la fecha y hora actual
