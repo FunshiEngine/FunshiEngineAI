@@ -11,7 +11,19 @@ enum class LlmMode {
 }
 
 @Serializable
-data class ChatMessage(val role: String, val content: String)
+data class ChatMessage(
+    val role: String,
+    val content: String,
+    /**
+     * Formato OpenAI: en `role=assistant` con tool call, el array `tool_calls`
+     * crudo (para el siguiente round del agente). null normalmente.
+     */
+    val toolCalls: kotlinx.serialization.json.JsonElement? = null,
+    /** En `role=tool`: id del tool call que este mensaje responde. */
+    val toolCallId: String? = null,
+    /** En `role=tool`: nombre de la herramienta respondida (algunos proveedores). */
+    val toolName: String? = null,
+)
 
 /** Un modelo GGUF descargable de Hugging Face (catálogo para el gestor de modelos). */
 @Serializable

@@ -1,5 +1,47 @@
 # Registro de Cambios - FunshiEngineAI
 
+## v0.5.0 (en desarrollo) — F1: núcleo de tool calling
+
+### ✨ Nuevas Características
+
+#### Tool calling: el modelo ya puede pedirle acciones a la app
+- **`llm-api`**: streaming tipado `Flow<LlmChunk>` (`Text` / `ToolCall`); el
+  gateway OpenAI-compatible envía `tools[]` en el request, acumula los
+  `delta.tool_calls` fragmentados del SSE y emite la llamada completa.
+  `ChatMessage` extendido con `toolCalls`, `toolCallId` y `toolName` (protocolo
+  OpenAI de resultados `role=tool`).
+- **`backend/rag/agent/`** (nuevo):
+  - `Tool` + `ToolSpec` + `ToolResult` (Ok/Error tipado) y `ToolContext`.
+  - `ToolRegistry`: catálogo por nombre, acepta herramientas locales y (futuro)
+    adaptadas de MCP.
+  - `AgentLoop`: bucle modelo→herramienta→modelo (máx. 8 rondas), con los DOS
+    caminos del diseño híbrido:
+    - `NATIVO` en modo REMOTE (OpenAI/Groq/OpenRouter…): `tool_calls` del protocolo.
+    - `POR PROMPT` en LOCAL (Phi-4-mini en llama-server): catálogo inyectado en el
+      system prompt + bloque delimitado:
+      ````
+      ```tool_call
+      {"tool":"nombre","arguments":{...}}
+      ```
+      ````
+      y parser incremental `PromptToolParser` que retira esos bloques del texto
+      visible durante el streaming.
+  - `GetTimeTool`: herramienta de prueba sin permisos (fecha y hora del sistema).
+- **Combo con RAG intacto**: `RagEngine.prepare()` arma system+contexto+historial;
+  el loop usa esos mensajes y agrega sus rondas. `Answer`/`ask()` siguen exigiendo
+  fuentes en modo DOCS.
+- **UI**: tarjeta `ToolCallCard` dentro de la burbuja (nombre + argumentos +
+  "Ejecutando…"/OK/Falló + resultado); persistida en `chats.json`
+  (`StoredMessage.toolCards`, tolerante con chats viejos). El "Detener" corta el
+  bucle completo.
+- **Comando `/tools`**: lista las herramientas registradas; `/help` actualizado.
+
+### 🔒 Sin cambios de comportamiento visible
+- Sin herramientas registradas el loop es streaming de texto puro (idéntico a antes).
+- `configVersion` sigue en 3 aún (config v4 llega en F7); ninguna migración nueva.
+
+---
+
 ## v0.4.0 (2026-10-18) — Chat sin límite de tiempo, /help y encolado de mensajes
 
 ### ✨ Nuevas Características

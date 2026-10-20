@@ -119,3 +119,7 @@ En desarrollo todo (config, modelos, docs internas) vive en `<raíz>/app-home`.
 - [ ] Manual de uso del FunshiEngine como fuente RAG.
 - [ ] Verificador determinista de citas (script post-generación).
 - [ ] Fallback local↔remoto con circuit breaker si se habilita modo dual.
+- [ ] **Plan de integración en curso** (`docs/PLAN-INTEGRACION.md`): tool
+      calling + AgentLoop, render markdown/código con extensiones reales,
+      archivos descargables en chat, web (DuckDuckGo), LaTeX (math + PDF),
+      HF Spaces (Gradio) y arquitectura MCP preparada.

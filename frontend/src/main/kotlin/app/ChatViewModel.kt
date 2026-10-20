@@ -24,6 +24,12 @@ import rag.ColorProfile
 import rag.KnowledgeBase
 import rag.RagEngine
 import rag.StoredMessage
+import rag.StoredToolCall
+import rag.agent.AgentEvent
+import rag.agent.AgentLoop
+import rag.agent.ToolContext
+import rag.agent.ToolRegistry
+import rag.agent.tools.GetTimeTool
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -39,6 +45,8 @@ class ChatViewModel {
     }
     private val kb = KnowledgeBase(config.rag)
     private var engine: RagEngine? = null
+    /** Herramientas disponibles para el modelo (el AgentLoop las ejecuta). */
+    private val tools = ToolRegistry(listOf(GetTimeTool()))
     private var chatJob: Job? = null
     /** Cola de mensajes pendientes mientras no hay engine listo. */
     private val pendingMessages = mutableListOf<Pair<String, List<ChatMessage>>>()
@@ -123,7 +131,7 @@ class ChatViewModel {
         }
         activeChatId = tree.firstChatId() ?: ""
         messages = (tree.nodeOf(activeChatId) as? ChatNode.Chat)
-            ?.messages?.map { UiMessage(it.role, it.text, it.sources) } ?: emptyList()
+            ?.messages?.map { toUiMessage(it) } ?: emptyList()
         refreshRows()
         refreshLists()
         // Arranque en background: NO bloquea la UI
@@ -213,12 +221,24 @@ class ChatViewModel {
         ChatStore.save(tree.toStored())
     }
 
+    /** Conversión mensaje persistido → UI (con tarjetas de tools). */
+    private fun toUiMessage(m: StoredMessage): UiMessage = UiMessage(
+        m.role, m.text, m.sources,
+        m.toolCards.map { c -> UiToolCall(c.name, c.args, c.ok, c.result) },
+    )
+
+    /** Conversión mensaje UI → persistido. */
+    private fun toStored(m: UiMessage): StoredMessage = StoredMessage(
+        m.role, m.text, m.sources,
+        m.toolCalls.map { c -> StoredToolCall(c.name, c.args, c.ok, c.result) },
+    )
+
     /** Guarda los mensajes del chat activo en el árbol y en disco. */
     private fun persistActiveChat() {
         val chat = tree.nodeOf(activeChatId) as? ChatNode.Chat ?: return
         val stored = messages
             .filter { it.text.isNotBlank() && it.text != "…" }
-            .map { StoredMessage(it.role, it.text, it.sources) }
+            .map { toStored(it) }
         // El nombre sigue derivándose del primer mensaje sólo si el usuario
         // nunca lo renombró a mano.
         if (chat.autoName) {
@@ -336,7 +356,7 @@ class ChatViewModel {
         if (wasInside) {
             activeChatId = tree.firstChatId() ?: ""
             messages = (tree.nodeOf(activeChatId) as? ChatNode.Chat)
-                ?.messages?.map { UiMessage(it.role, it.text, it.sources) } ?: emptyList()
+                ?.messages?.map { toUiMessage(it) } ?: emptyList()
             error = ""
             testResult = ""
         }
@@ -350,7 +370,7 @@ class ChatViewModel {
         val target = tree.nodeOf(id) as? ChatNode.Chat ?: return
         persistActiveChat()
         activeChatId = id
-        messages = target.messages.map { UiMessage(it.role, it.text, it.sources) }
+        messages = target.messages.map { toUiMessage(it) }
         error = ""
         testResult = ""
         refreshRows()
@@ -632,6 +652,7 @@ class ChatViewModel {
             "model" -> cmdModel(arg)
             "thinking" -> cmdThinking(arg)
             "power" -> cmdPower(arg)
+            "tools" -> cmdTools()
             else -> "Comando no reconocido: `$raw`.\n\n" + cmdHelp()
         }
         updateLast(reply)
@@ -647,6 +668,7 @@ class ChatViewModel {
         · `/model <id>` — cambia el modelo activo al indicado.
         · `/thinking [off|low|medium|high]` — nivel de razonamiento del modelo.
         · `/power [low|medium|high]` — potencia de la respuesta (tokens de salida).
+        · `/tools` — lista las herramientas que el modelo puede usar.
 
         Mientras el modelo responde podés seguir escribiendo: los mensajes
         se encolan y se envían juntos, uno debajo del otro, al terminar.
@@ -720,6 +742,12 @@ class ChatViewModel {
         return "Potencia de respuesta ajustada a `$arg`."
     }
 
+    /** /tools — catálogo de herramientas registradas para el modelo. */
+    private fun cmdTools(): String {
+        if (tools.isEmpty) return "No hay herramientas registradas todavía."
+        return "Herramientas que puede usar el modelo (el ${if (config.llm.mode == LlmMode.REMOTE) "protocolo OpenAI nativo" else "protocolo por prompt"}):\n\n" + tools.describe()
+    }
+
     /** Lógica interna de envío (engine garantizado no-nulo y ready=true). */
     private fun sendInternal(text: String, history: List<ChatMessage>) {
         val eng = engine!!
@@ -733,16 +761,48 @@ class ChatViewModel {
         chatJob = scope.launch {
             try {
                 val useDocs = chatMode == "DOCS"
-                val answer = withContext(Dispatchers.IO) {
-                    if (useDocs) eng.ask(text, history) else eng.askGeneral(text, history)
-                }
+                val prepared = withContext(Dispatchers.IO) { eng.prepare(text, history, useDocs) }
+                val sourceLabels = prepared.sources.map { it.label }.distinct()
+                // Camino nativo (`tool_calls` del protocolo OpenAI) sólo REMOTO;
+                // LOCAL usa catálogo por prompt con bloque delimitado.
+                val native = config.llm.mode == LlmMode.REMOTE
+                val loop = AgentLoop(eng.gateway, tools, native)
+                var cards = listOf<UiToolCall>()
                 val sb = StringBuilder()
-                answer.tokens.collect {
-                    sb.append(it)
-                    if (activeChatId == originChatId) updateLast(sb.toString())
+
+                val answer = withContext(Dispatchers.IO) {
+                    loop.run(prepared.messages, ToolContext(originChatId)) { ev ->
+                        when (ev) {
+                            is AgentEvent.Text -> {
+                                sb.append(ev.delta)
+                                if (activeChatId == originChatId) {
+                                    updateLast(sb.toString(), sourceLabels, cards)
+                                }
+                            }
+                            is AgentEvent.ToolStart -> {
+                                cards = cards + UiToolCall(ev.name, ev.argsJson, null, "")
+                                if (activeChatId == originChatId) {
+                                    updateLast(sb.toString(), sourceLabels, cards)
+                                }
+                            }
+                            is AgentEvent.ToolEnd -> {
+                                val i = cards.indexOfLast { it.name == ev.name && it.ok == null }
+                                cards = if (i >= 0) {
+                                    cards.withIndex().map { (j, c) ->
+                                        if (j == i) c.copy(ok = ev.ok, result = ev.result) else c
+                                    }
+                                } else {
+                                    cards + UiToolCall(ev.name, "", ev.ok, ev.result)
+                                }
+                                if (activeChatId == originChatId) {
+                                    updateLast(sb.toString(), sourceLabels, cards)
+                                }
+                            }
+                        }
+                    }
                 }
                 if (activeChatId == originChatId) {
-                    updateLast(sb.toString(), answer.sources.map { it.label }.distinct())
+                    updateLast(answer.text, sourceLabels, cards)
                 }
             } catch (e: CancellationException) {
                 if (activeChatId == originChatId) updateLast("(cancelado)")
@@ -846,9 +906,10 @@ class ChatViewModel {
         send(text)
     }
 
-    private fun updateLast(text: String, sources: List<String> = emptyList()) {
+    private fun updateLast(text: String, sources: List<String> = emptyList(), toolCards: List<UiToolCall> = emptyList()) {
         if (messages.isEmpty()) return
-        messages = messages.dropLast(1) + messages.last().copy(text = text, sources = sources)
+        messages = messages.dropLast(1) +
+            messages.last().copy(text = text, sources = sources, toolCalls = toolCards)
     }
 
     // ---- gestor de modelos ----

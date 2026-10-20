@@ -7,6 +7,35 @@ y se mueve a `docs/CHANGES.md` en el próximo registro de versión.
 
 ## Pendientes
 
+### 0. Integración por fases: herramientas, formatos, web, archivos, LaTeX, HF Spaces, MCP
+
+**Estado:** PLANIFICADO (2026-10-19) — diseño completo en `docs/PLAN-INTEGRACION.md`
+(decisiones cerradas con el usuario; ver §2 de ese documento). **F1 IMPLEMENTADO (2026-10-20), compilado.**
+
+Implementación por fases (orden acordado):
+
+- [x] **F1**: `LlmChunk` tipado + `tools` en gateway OpenAI-compatible +
+      `AgentLoop` + `ToolRegistry` + `ToolCallCard` + tool de prueba `get_time`.
+      Tool-calling híbrido: nativo en REMOTE, JSON delimitado por prompt en LOCAL.
+- [ ] **F2**: Renderer markdown propio + `CodeBlock` con syntax highlight +
+      extensiones reales (`.py`, `.kt`, `.cpp`, `.glsl`…) + "Guardar como…".
+- [ ] **F3**: `create_file` + `download_url` + `AttachmentCard` + permisos FILES
+      + comando `/permitir-archivos` (permisos por categoría, default off,
+      asociados al chat activo).
+- [ ] **F4**: `web_search` (DuckDuckGo, sin clave) + `web_fetch` + permisos WEB
+      + `/permitir-web` + escenario E2E: pedir un PDF generado por una IA web y
+      entregarlo como adjunto descargable.
+- [ ] **F5**: Math LaTeX en chat (JLaTeXMath, offline) + `latex_compile` → PDF
+      (autodetecta TinyTeX/MiKTeX; fail-fast con guía si falta).
+- [ ] **F6**: `GradioSpaceGateway` — modelo remoto vía HF Spaces. **CONGELADA**
+      (2026-10-19): decisión pendiente, el usuario la dejó incompleta. Ver §10
+      del plan (alternativa recomendada: HF Inference Providers).
+- [ ] **F7**: Contrato MCP (`McpConnection` + registro con origen LOCAL|MCP,
+      sin SDK aún — sin servidores que conectar) + config v4 + pantalla de
+      permisos + documentación (`ARCHITECTURE.md`, `CHANGES.md`).
+
+---
+
 ### 1. Modelos: "Ver archivos" inline bajo cada resultado (con "Ocultar archivos")
 
 **Estado:** IMPLEMENTADO (2026-10-18) — compilado.

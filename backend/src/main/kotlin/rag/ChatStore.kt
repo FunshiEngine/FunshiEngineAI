@@ -4,12 +4,23 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import java.nio.file.Files
 
+/** Tarjeta de tool call persistida junto al mensaje. */
+@Serializable
+data class StoredToolCall(
+    val name: String,
+    val args: String = "",
+    val ok: Boolean? = null,
+    val result: String = "",
+)
+
 /** Mensaje persistido de un chat. */
 @Serializable
 data class StoredMessage(
     val role: String,
     val text: String,
     val sources: List<String> = emptyList(),
+    /** Tarjetas de herramientas usadas en esta respuesta (opcional). */
+    val toolCards: List<StoredToolCall> = emptyList(),
 )
 
 /**

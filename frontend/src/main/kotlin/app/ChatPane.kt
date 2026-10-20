@@ -39,6 +39,7 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.IntOffset
@@ -657,6 +658,9 @@ fun MessageBubble(
                     // en Editar/Borrar dentro de un contenedor de selección.
                     SelectionContainer {
                         Column {
+                            // Tarjetas de herramientas usadas en esta respuesta
+                            // (F1: tool calling). Antes del texto del mensaje.
+                            m.toolCalls.forEach { tc -> ToolCallCard(tc) }
                             Text(m.text.ifEmpty { "…" })
                             if (m.sources.isNotEmpty()) {
                                 Spacer(Modifier.height(8.dp))
@@ -693,6 +697,54 @@ fun MessageBubble(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Tarjeta de una herramienta ejecutada por el modelo (F1): nombre + argumentos
+ * + estado (en curso / OK / Falló) y el resultado, colapsado a pocas líneas.
+ * Sin emojis: los estados son texto (Material Icons cuando toque en F3+).
+ */
+@Composable
+private fun ToolCallCard(call: UiToolCall) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surface,
+        modifier = Modifier.padding(bottom = 6.dp).fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Herramienta: ${call.name}",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                )
+            }
+            if (call.args.isNotBlank() && call.args != "{}") {
+                Text(
+                    call.args,
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 3,
+                )
+            }
+            when (call.ok) {
+                null -> Text("Ejecutando…", fontSize = 10.sp, color = MaterialTheme.colorScheme.tertiary)
+                true -> {
+                    Text("OK", fontSize = 10.sp, color = MaterialTheme.colorScheme.tertiary)
+                    if (call.result.isNotBlank()) {
+                        Text(
+                            call.result,
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 6,
+                        )
+                    }
+                }
+                false -> Text("Falló", fontSize = 10.sp, color = MaterialTheme.colorScheme.error)
             }
         }
     }

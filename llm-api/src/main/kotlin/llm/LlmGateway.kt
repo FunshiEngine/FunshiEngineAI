@@ -12,6 +12,7 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -19,8 +20,21 @@ import kotlinx.serialization.json.*
 
 /** Contrato que usa el backend. No sabe si detrás hay llama.cpp, Ollama u OpenAI. */
 interface LlmGateway {
-    fun chatStream(messages: List<ChatMessage>): Flow<String>
-    suspend fun chat(messages: List<ChatMessage>): String = chatStream(messages).toList().joinToString("")
+    /**
+     * Streaming de la respuesta, tipado: texto de a fragmentos y, si el modelo
+     * pidió una herramienta, [LlmChunk.ToolCall] con la llamada completa.
+     * [tools] opcional: catálogo de herramientas que el modelo puede pedir.
+     */
+    fun chatStream(messages: List<ChatMessage>, tools: List<ToolSpec>? = null): Flow<LlmChunk>
+
+    /** Sólo los fragmentos de texto (lo que pinta el chat sin herramientas). */
+    fun chatText(messages: List<ChatMessage>): Flow<String> =
+        chatStream(messages).map { chunk -> (chunk as? LlmChunk.Text)?.delta.orEmpty() }
+
+    /** Respuesta completa (sin streaming). */
+    suspend fun chat(messages: List<ChatMessage>): String =
+        chatText(messages).toList().joinToString("")
+
     /** Lista los modelos del endpoint (`GET /models`); sirve para "Probar conexión". */
     suspend fun listModels(): List<String> = emptyList()
     fun close() {}
@@ -29,12 +43,17 @@ interface LlmGateway {
 /**
  * Cliente para cualquier endpoint /v1/chat/completions con streaming SSE.
  *
- * Mejoras sobre un cliente básico:
- *  - Errores tipados ([LlmException]) clasificando status HTTP (401→clave,
- *    429→cuota, 400+tokens→contexto, 5xx→servidor) en vez de `error(...)` crudo.
- *  - Timeout por petición opcional (`chatTimeoutMs`; 0 = sin límite, que es
- *    lo por defecto) sobre el flujo completo, para que un servidor colgado
- *    no deje la petición zombi cuando se configura.
+ * Soporte de herramientas:
+ *  - Si recibe [tools], los envía en el body (`tools[]`, formato OpenAI) y
+ *    acumula los `delta.tool_calls` fragmentados del stream para emitirlos como
+ *    [LlmChunk.ToolCall] al terminar ([DONE] o cierre del stream).
+ *  - Los mensajes `role=tool` (resultados) y `role=assistant` con `tool_calls`
+ *    se serializan según el protocolo OpenAI.
+ *
+ * Errores tipados ([LlmException]) clasificando status HTTP (401→clave,
+ * 429→cuota, 400+tokens→contexto, 5xx→servidor) en vez de `error(...)` crudo.
+ * Timeout por petición opcional (`chatTimeoutMs`; 0 = sin límite, que es
+ * lo por defecto) sobre el flujo completo.
  */
 class OpenAiCompatibleGateway(
     private val baseUrl: String,
@@ -76,6 +95,28 @@ class OpenAiCompatibleGateway(
         }
     }
 
+    /** Convierte un ToolSpec al formato `tools[]` que espera el protocolo OpenAI. */
+    private fun toolToBody(spec: ToolSpec): JsonObject = buildJsonObject {
+        put("type", "function")
+        put("function", buildJsonObject {
+            put("name", spec.name)
+            put("description", spec.description)
+            put("parameters", json.parseToJsonElement(spec.parametersSchema))
+        })
+    }
+
+    /** Ensambla una conversación a JSON: system/user/assistant/tool con sus extras. */
+    private fun messageToBody(m: ChatMessage): JsonObject = buildJsonObject {
+        put("role", m.role)
+        // Assistant con tool_calls y sin texto: content se omite (algunos
+        // proveedores lo exigen). Resto de roles: siempre content.
+        val omitContent = m.role == "assistant" && m.content.isEmpty() && m.toolCalls != null
+        if (!omitContent) put("content", m.content)
+        m.toolCalls?.let { put("tool_calls", it) }
+        m.toolCallId?.let { put("tool_call_id", it) }
+        m.toolName?.let { put("name", it) }
+    }
+
     /**
      * Error de transporte con contexto útil: incluye la URL y qué revisar.
      * Antes decía sólo "Fallo de red con la API: Connection refused: getsockopt",
@@ -100,7 +141,7 @@ class OpenAiCompatibleGateway(
         }
     }
 
-    override fun chatStream(messages: List<ChatMessage>): Flow<String> = flow {
+    override fun chatStream(messages: List<ChatMessage>, tools: List<ToolSpec>?): Flow<LlmChunk> = flow {
         val body = buildJsonObject {
             put("model", model)
             put("stream", true)
@@ -110,12 +151,28 @@ class OpenAiCompatibleGateway(
             if (thinking.isNotBlank() && !thinking.equals("off", ignoreCase = true)) {
                 put("reasoning_effort", thinking.lowercase())
             }
-            putJsonArray("messages") {
-                messages.forEach { m ->
-                    add(buildJsonObject { put("role", m.role); put("content", m.content) })
+            // Catálogo de herramientas: sólo si el caller las pasó.
+            if (!tools.isNullOrEmpty()) {
+                putJsonArray("tools") {
+                    tools.forEach { add(toolToBody(it)) }
                 }
             }
+            putJsonArray("messages") {
+                messages.forEach { add(messageToBody(it)) }
+            }
         }
+
+        /**
+         * Acumulación de tool_calls fragmentados: cada delta puede traer un
+         * trocito de `arguments` (u `id`/`name` en el primer delta de esa call).
+         * Los chunks completos se emiten al terminar el stream.
+         */
+        data class PendingCall(
+            val id: StringBuilder = StringBuilder(),
+            val name: StringBuilder = StringBuilder(),
+            val args: StringBuilder = StringBuilder(),
+        )
+        val pending = LinkedHashMap<Int, PendingCall>()
 
         // Timeout opcional por petición, también en streaming: con
         // chatTimeoutMs = 0 (por defecto) no hay límite de tiempo y una
@@ -137,11 +194,31 @@ class OpenAiCompatibleGateway(
                     if (!line.startsWith("data:")) continue
                     val data = line.removePrefix("data:").trim()
                     if (data == "[DONE]") break
-                    val token = json.parseToJsonElement(data).jsonObject["choices"]
-                        ?.jsonArray?.firstOrNull()?.jsonObject
-                        ?.get("delta")?.jsonObject
-                        ?.get("content")?.jsonPrimitive?.contentOrNull
-                    if (!token.isNullOrEmpty()) emit(token)
+                    val choice = json.parseToJsonElement(data).jsonObject["choices"]
+                        ?.jsonArray?.firstOrNull()?.jsonObject ?: continue
+                    val delta = choice["delta"]?.jsonObject
+
+                    // Fragmentos de texto normal.
+                    delta?.get("content")?.let { c ->
+                        val token = (c as? JsonPrimitive)?.contentOrNull
+                        if (!token.isNullOrEmpty()) emit(LlmChunk.Text(token))
+                    }
+
+                    // Fragmentos de tool calls: se acumulan por index.
+                    delta?.get("tool_calls")?.let { rawEl ->
+                        val arr = rawEl as? JsonArray
+                        arr?.forEach { item ->
+                            val tc = item as? JsonObject
+                            if (tc == null) return@forEach
+                            val idx = (tc["index"] as? JsonPrimitive)?.content?.toIntOrNull() ?: 0
+                            val p = pending.getOrPut(idx) { PendingCall() }
+                            (tc["id"] as? JsonPrimitive)?.contentOrNull?.let { p.id.append(it) }
+                            (tc["function"] as? JsonObject)?.let { fn ->
+                                (fn["name"] as? JsonPrimitive)?.contentOrNull?.let { p.name.append(it) }
+                                (fn["arguments"] as? JsonPrimitive)?.contentOrNull?.let { p.args.append(it) }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -155,6 +232,20 @@ class OpenAiCompatibleGateway(
             throw e // cancelación real del usuario: no la convertimos en error
         } catch (e: Exception) {
             throw transportError(e)
+        }
+
+        // Terminó el stream: emitir las tool calls acumuladas (una por call).
+        pending.entries.sortedBy { it.key }.forEach { (_, p) ->
+            val name = p.name.toString().trim()
+            if (name.isNotEmpty()) {
+                emit(
+                    LlmChunk.ToolCall(
+                        id = p.id.toString().ifBlank { name },
+                        name = name,
+                        argsJson = p.args.toString().ifBlank { "{}" },
+                    ),
+                )
+            }
         }
     }.flowOn(Dispatchers.IO)
 

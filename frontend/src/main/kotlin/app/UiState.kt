@@ -17,11 +17,21 @@ data class AppTheme(
     val accent: Int = 0xFF6200EE.toInt(),
 )
 
+/** Una herramienta ejecutada por el modelo durante una respuesta (tarjeta). */
+data class UiToolCall(
+    val name: String,
+    val args: String,
+    /** null = todavía ejecutándose. */
+    val ok: Boolean? = null,
+    val result: String = "",
+)
+
 /** Mensaje de chat para la UI. */
 data class UiMessage(
     val role: String,
     val text: String,
     val sources: List<String> = emptyList(),
+    val toolCalls: List<UiToolCall> = emptyList(),
 )
 
 /** Archivo documental cargado en un motor (para el panel "Documentación"). */
