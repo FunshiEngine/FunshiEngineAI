@@ -76,7 +76,24 @@ object ToolCallSanitizer {
     private fun parseAndValidate(raw: String, expectedName: String? = null): SanitizedToolCall {
         // Paso 1: tal cual.
         val direct = try { lenient.parseToJsonElement(raw) } catch (_: Exception) { null }
-        if (direct is JsonObject) return validateShape(direct, expectedName)
+        if (direct is JsonObject) {
+            val shaped = validateShape(direct, expectedName)
+            if (shaped is SanitizedToolCall.Valid) return shaped
+            // El JSON parsea pero la FORMA no es válida. Suele pasar con las
+            // comillas curvas: en modo lenient el parser las acepta como parte
+            // de la clave (`“tool”` en vez de `tool`), así que parsea "bien" y
+            // la forma queda rota. Por eso la reparación se prueba también
+            // después de un parseo exitoso.
+            val repaired = repairJson(raw)
+            if (repaired != raw) {
+                val parsed = try { lenient.parseToJsonElement(repaired) } catch (_: Exception) { null }
+                if (parsed is JsonObject) {
+                    val reshaped = validateShape(parsed, expectedName)
+                    if (reshaped is SanitizedToolCall.Valid) return reshaped
+                }
+            }
+            return shaped
+        }
 
         // Paso 2: reparaciones comunes de modelos pequeños.
         val repaired = repairJson(raw)
