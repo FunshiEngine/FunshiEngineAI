@@ -6,12 +6,18 @@ información** — si no hay una referencia que lo respalde, lo dice.
 
 ## Qué estamos montando
 
-- **`frontend/`** — Chat de escritorio (Jetpack Compose Desktop).
+- **`frontend/`** — Chat de escritorio (Jetpack Compose Desktop). Render propio de markdown y
+  bloques de código, tarjetas de herramientas y árbol de chats con carpetas.
 - **`backend/`** — RAG (Retrieval-Augmented Generation): indexa fuentes, trocea documentos en
   chunks, recupera los más relevantes (BM25) y arma el prompt con el system prompt editable.
+  Además, el **bucle de herramientas** (`rag.agent`): el modelo puede pedir acciones a la app.
 - **`llm-api/`** — Fachada de LLM: descarga el modelo GGUF, levanta `llama-server` (llama.cpp)
   en local y expone un `LlmGateway` con streaming SSE compatible con OpenAI. También puede
   apuntar a cualquier API compatible (Ollama, LM Studio, vLLM, OpenAI…).
+- **`estructuras/`** — Estructuras de datos reutilizables (árboles, colas, pilas).
+
+Cada módulo está dividido en paquetes por área (`llm.api`, `rag.agent`, `app.chat`…) — el mapa
+completo está en [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ### Fuentes de conocimiento (RAG)
 
@@ -20,6 +26,7 @@ información** — si no hay una referencia que lo respalde, lo dice.
 | Repos de GitHub | ✅ | `githubSources` en la config descarga el zipball y indexa `.md`, `.txt`, `.rst`, `.adoc`… |
 | System prompt | ✅ | `config/system_prompt.md` — editable sin reiniciar, define el rol y las reglas. |
 | Docs internas | ✅ | `internal-docs/` — carpeta local de documentos. |
+| Docs por motor | ✅ | `api-docs/<id>/` — documentación propia de cada API (y del modelo local). |
 | Manual del FunshiEngine | 📋 futuro | Un `.md` de documentación del motor, pensado como **manual de uso para personas que
 hacen juegos** (no para quienes tocan el código del motor): mezcla de guía, recetas y
 referencia de API. |
@@ -30,6 +37,12 @@ referencia de API. |
   referencia la documentación indexada.
 - **Sugerir documentación** según la necesidad del usuario (qué falta, qué conviene escribir).
 - Responder preguntas citando las fuentes con números (`[1]`, `[2]`).
+- **Renderizar** la respuesta como markdown: títulos, listas, tablas, citas y **bloques de
+  código con resaltado**, copiar y "guardar como…" con la extensión real (`.py`, `.kt`,
+  `.cpp`, `.glsl`…).
+- **Tool calling**: el modelo puede pedir herramientas a la app (hoy, `get_time`); funciona en
+  modo nativo contra APIs OpenAI-compatible y en modo protocolo-por-prompt contra el modelo
+  local.
 
 ## Regla central: no inventar sin referencia
 
@@ -53,6 +66,7 @@ Todo se configura en `app-home/config/app-config.json` (se crea solo en el prime
 ```jsonc
 {
   "llm": {
+    "configVersion": 3,
     "mode": "LOCAL",                  // LOCAL (llama-server) | REMOTE (API compatible OpenAI)
     "remoteBaseUrl": "http://localhost:11434/v1",
     "apiKey": "",
@@ -63,38 +77,32 @@ Todo se configura en `app-home/config/app-config.json` (se crea solo en el prime
     "gpuLayers": 0,                   // >0 si tienes GPU con VRAM suficiente
     "temperature": 0.2,
     "maxTokens": 1024,
-    "chatTimeoutMs": 0,             // 0 = sin límite de tiempo por respuesta
-    "loadTimeoutMs": 180000,        // espera máxima a llama-server
-    "llamaServerPath": "",          // vacío = autodetecta (clon compilado → PATH)
+    "chatTimeoutMs": 0,               // 0 = sin límite de tiempo por respuesta
+    "loadTimeoutMs": 180000,          // espera máxima a llama-server
+    "llamaServerPath": "",            // vacío = autodetecta (clon compilado → PATH)
     "llamaRepoUrl": "https://github.com/ggml-org/llama.cpp.git",
-    "llamaRepoVersion": "",         // rama/tag (vacío = HEAD)
-    "llamaRepoDir": "",             // vacío = <app-home>/llama.cpp
+    "llamaRepoVersion": "",           // rama/tag (vacío = HEAD)
+    "llamaRepoDir": "",               // vacío = <app-home>/llama.cpp
     "gitBin": "git",
-    "buildFromSource": false,       // true = clona y compila llama-server con cmake
-    "localPort": 8081,              // si está ocupado, prueba los 19 siguientes
+    "buildFromSource": true,          // true = clona y compila llama-server con cmake
+    "localPort": 8081,                // si está ocupado, prueba los 19 siguientes
     "modelsDir": "models",
-    "hfToken": "",                  // solo si el repo de HF lo exige
-    "modelCatalog": [ … ],          // catálogo de modelos (pantalla Modelos)
-    "apiPresets": [ … ]             // colección de APIs (pantalla APIs)
+    "hfToken": "",                    // solo si el repo de HF lo exige
+    "modelCatalog": [ … ],            // catálogo de modelos (pantalla Modelos)
+    "apiPresets": [ … ]               // colección de APIs (pantalla Motor)
   },
-```
-
-El front tiene 4 pantallas (pestañas **Chat / Modelos / APIs / Estado**):
-
-- **Estado** (carga): clonar llama.cpp con `%`, compilar con cmake con `%`,
-  descargar el GGUF con MB y `%`, arrancar el servidor — con botón Reintentar.
-- **Modelos**: catálogo con Descargar (barra +Cancelar), Activar (reinicia el
-  servidor con ese modelo), agregar repo/archivo de HF (con "Listar .gguf").
-- **APIs**: colección de endpoints OpenAI-compatibles (Ollama/LM Studio de
-  ejemplo), Activar (modo REMOTO) y "Volver a modelo local".
   "rag": {
     "githubSources": [ { "owner": "…", "repo": "…", "ref": "", "paths": ["docs/"] } ],
     "internalDocsDirs": ["internal-docs"],
     "systemPromptFile": "config/system_prompt.md",
+    "chunkSize": 1200,
     "topK": 5
   }
 }
 ```
+
+Los chats (carpetas, mensajes y tarjetas de herramientas) se guardan aparte, en
+`app-home/config/chats.json`.
 
 **Modelo local por defecto**: `Phi-4-mini-instruct-Q4_K_M.gguf`
 (`https://huggingface.co/unsloth/Phi-4-mini-instruct-GGUF/resolve/main/Phi-4-mini-instruct-Q4_K_M.gguf`,
@@ -103,10 +111,24 @@ El front tiene 4 pantallas (pestañas **Chat / Modelos / APIs / Estado**):
 **Requisitos**: JDK 21, Gradle, y `llama-server` de llama.cpp en el PATH (o indicar la ruta en
 `llm.llamaServerPath`).
 
+## Pantallas
+
+La barra lateral (colapsable) tiene cuatro secciones:
+
+- **Chat**: conversaciones con carpetas anidables, drag & drop, click derecho; burbujas con
+  copiar/reiniciar, redactor con cola de mensajes mientras la IA responde y tarjetas de
+  herramientas.
+- **Modelos**: catálogo con Descargar (barra + Cancelar), Usar (reinicia el motor con ese
+  modelo), agregar repo/archivo de HF (con "Listar .gguf").
+- **Motor**: segmentado LOCAL/REMOTE, colección de APIs compatibles con OpenAI
+  (Ollama/LM Studio de ejemplo) con "Probar conexión", documentación propia por API y
+  "Volver a modelo local".
+- **Config**: tema claro/oscuro y color de acento.
+
 ## Ejecutar
 
 ```bash
-gradle :frontend:run
+./gradlew :frontend:run
 ```
 
 En desarrollo todo (config, modelos, docs internas) vive en `<raíz>/app-home`.
@@ -116,10 +138,14 @@ En desarrollo todo (config, modelos, docs internas) vive en `<raíz>/app-home`.
 - [x] Chat local con streaming + RAG (BM25) sobre GitHub y docs internas.
 - [x] Descarga del modelo con reanudación y arranque de `llama-server`.
 - [x] Validación estricta de config, errores tipados y robustez del servidor local.
+- [x] **F1 — tool calling**: bucle modelo→herramienta→modelo, nativo en REMOTE y por prompt
+      en LOCAL, con reparación del JSON que devuelve el modelo.
+- [x] **F2 — markdown y código**: renderizador propio, bloques de código con resaltado,
+      copiar y "guardar como…" con extensiones reales.
+- [x] **Arquitectura modular**: un paquete por área en los tres módulos.
+- [ ] **F3–F7** (en curso, plan en `docs/PLAN-INTEGRACION.md`): archivos descargables en el
+      chat, web (DuckDuckGo), LaTeX (math + PDF), HF Spaces (Gradio) y MCP preparado.
 - [ ] Manual de uso del FunshiEngine como fuente RAG.
 - [ ] Verificador determinista de citas (script post-generación).
-- [ ] Fallback local↔remoto con circuit breaker si se habilita modo dual.
-- [ ] **Plan de integración en curso** (`docs/PLAN-INTEGRACION.md`): tool
-      calling + AgentLoop, render markdown/código con extensiones reales,
-      archivos descargables en chat, web (DuckDuckGo), LaTeX (math + PDF),
-      HF Spaces (Gradio) y arquitectura MCP preparada.
+- [ ] Tests unitarios del `ChatViewModel` (cola, arranque, cancelación) y de integración de
+      `KnowledgeBase.sync()` + `RagEngine.ask()`.

@@ -1,6 +1,61 @@
 # Registro de Cambios - FunshiEngineAI
 
-## v0.5.0 (en desarrollo) — F1: núcleo de tool calling
+## v0.6.0 (2026-10-20) — F2: markdown y bloques de código + arquitectura modular
+
+### ✨ Nuevas Características
+
+#### Las respuestas del modelo se renderizan como markdown
+- **`app/ui/Markdown.kt`** (nuevo): renderizador propio, sin dependencias externas.
+  `parseMarkdown(src)` devuelve un árbol de `MdNode` (`Heading`, `Paragraph`, `Bullets`,
+  `Code`, `Quote`, `Table`, `Divider`) y `MarkdownText` lo pinta con `AnnotatedString`.
+  Los estilos en línea (`**negrita**`, `` `código` ``, `[enlace](url)`) se resuelven en
+  `buildInlineAnnotated`.
+- **`app/ui/CodeBlock.kt`** (nuevo): bloque de código con tokenizador y resaltado
+  propios, botón **copiar** y **guardar como…** con la extensión real del lenguaje
+  (`.py`, `.kt`, `.cpp`, `.glsl`, `.html`, `.css`, `.js`, `.json`, `.rs`…), con
+  `JFileChooser` en el hilo de Swing.
+- En `ChatPane` las respuestas del modelo pasan por `MarkdownText`; los mensajes del
+  usuario siguen siendo texto plano.
+
+### 🔧 Arquitectura: un paquete por área
+
+- **Paquetes** reorganizados en los tres módulos (mapa completo en
+  `docs/ARCHITECTURE.md`):
+  - `llm-api`: `llm.api` (gateway + contratos de tools), `llm.config`, `llm.error`,
+    `llm.local`, `llm.catalog`, `llm.service`.
+  - `backend`: `rag.config`, `rag.store`, `rag.retrieval`, `rag.engine`, `rag.agent`.
+  - `frontend`: `app` (entrada + navegación), `app.core` (estado compartido),
+    `app.ui` (markdown/código), `app.chat` (chat), `app.screens` (modelos, APIs,
+    ajustes).
+- **Archivos grandes partidos**:
+  - `ChatPane.kt` → `ChatPane` + `ChatSidebar` + `MessageBubble` + `ToolCallCard` +
+    `ComposerBar`.
+  - `ChatViewModel.kt` (1.158 líneas) → `ChatViewModel` (núcleo: estado, tema y flujo
+    del chat) + `ChatLibrary` (árbol de chats y persistencia) + `ChatEngine` (arranque,
+    gateway, documentación por motor) + `ChatCatalog` (modelos y APIs) +
+    `ChatCommands` (comandos de barra) + `ChatMessages` (mapeo UI ↔ persistido).
+    Como Kotlin no tiene `partial class`, las operaciones de cada área son funciones
+    de extensión sobre el ViewModel: el estado sigue siendo del ViewModel, lo que se
+    reparte es el código.
+- Los miembros que hacen falta desde varias áreas pasan a `internal` (visibles sólo
+  dentro del módulo del frontend); las pantallas importan explícitamente las
+  extensiones que usan.
+
+### 📚 Documentación
+- `docs/ARCHITECTURE.md` reescrito: mapa de módulos y paquetes, flujo de tool calling
+  (nativo vs. prompt, sanitizador y reglas del bucle), render markdown/código,
+  organización del frontend, concurrencia, config y errores.
+- `docs/TAREAS.md`: F2 marcado como implementado + tarea de modularización.
+- `README.md` actualizado (estructura, pantallas, config, roadmap).
+
+### 🔒 Sin cambios de comportamiento visible
+- El modelo sigue hablando igual: el markdown sólo cambia **cómo se ve** la
+  respuesta. Sin herramientas registradas el bucle es streaming de texto puro.
+- `configVersion` sigue en 3 (la v4 llega con F7); ninguna migración nueva.
+
+---
+
+## v0.5.0 (2026-10-20) — F1: núcleo de tool calling
 
 ### ✨ Nuevas Características
 

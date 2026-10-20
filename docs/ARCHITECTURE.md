@@ -2,7 +2,14 @@
 
 ## Visión General
 
-FunshiEngineAI es una aplicación de escritorio (Compose Multiplatform / Desktop) para chat RAG (Retrieval-Augmented Generation) con modelos LLM locales o remotos. La arquitectura sigue principios de **separación de responsabilidades**, **reactividad** y **fail-fast**.
+FunshiEngineAI es una aplicación de escritorio (Compose Multiplatform / Desktop) para chat RAG
+(Retrieval-Augmented Generation) con modelos LLM locales o remotos, que además puede dar
+**herramientas** al modelo (tool calling) y **renderizar** markdown y código.
+
+La arquitectura sigue principios de **separación de responsabilidades** (paquetes por área),
+**reactividad** (Compose + `MutableState`), **fail-fast** (config validada antes de tocar red o
+procesos) y **tolerancia a la entrada del modelo** (el bucle de herramientas repara y reintenta en
+lugar de fallar).
 
 ---
 
@@ -11,43 +18,145 @@ FunshiEngineAI es una aplicación de escritorio (Compose Multiplatform / Desktop
 ```
 FunshiEngineAI/
 ├── frontend/          # UI Compose Desktop (Kotlin)
-├── backend/           # Motor RAG (indexación, retrieval, prompts)
+├── backend/           # Motor RAG + bucle de tool calling
 ├── llm-api/           # Capa de inferencia LLM (local + remoto)
+├── estructuras/       # Estructuras de datos reutilizables (árboles, colas, pilas)
 └── app-home/          # Directorio de trabajo en tiempo de ejecución (config, modelos, logs, docs)
 ```
 
-### `frontend/` — UI Reactiva
-- **Framework**: Compose Desktop (Material 3) + Kotlin 2.1
-- **Patrón**: MVVM simplificado — `ChatViewModel` expone `MutableState` observables
-- **Navegación**: Sidebar colapsable (`NavigationRailPane`) + pantallas (`Chat`, `Modelos`, `Motor`, `Config`)
-- **Estado**: `UiState.kt` define tipos compartidos (`Screen`, `UiMessage`, `UiProgress`, `AppTheme`)
+Dependencias (una sola dirección, sin ciclos):
 
-### `backend/` — Motor RAG
-- **Indexación**: BM25 sobre chunks de documentos (GitHub + carpetas locales)
-- **Fuentes**: `GithubDocsSource` (API REST) + `LocalDocsSource` (FS)
-- **Chunking**: Solapamiento configurable (`chunkSize`, `chunkOverlap`)
-- **Prompt**: System prompt cargado desde `config/system_prompt.md`
-- **Config**: `RagConfig` serializado en `app-config.json`
+```
+frontend  ──►  backend  ──►  llm-api
+   └──────────────────────────►  (backend usa llm-api; el frontend usa ambos)
+```
 
-### `llm-api/` — Capa de Inferencia
-- **Modos**: `LOCAL` (llama.cpp vía `llama-server`) | `REMOTE` (OpenAI-compatible)
-- **Config por supplier**: `LlmService({ config.llm }, ...)` y `ModelManager({ config.llm }, ...)` reciben `() -> LlmConfig`; cada arranque lee la config actual (así activar una API/modelo surte efecto inmediato)
-- **Gestión de modelos**: Catálogo GGUF de Hugging Face, descarga streaming + reanudación (`.part` + `Range`)
-- **llama.cpp**: Clonado (`git clone --depth 1`), checkout, build opcional (`cmake`), autodetección binario
-- **Servidor local**: `LocalServerManager` — escaneo de puertos libres (B-11), health polling, tail de logs en errores
-- **Gateway**: `OpenAiCompatibleGateway` — streaming SSE, timeouts configurables
-- **Validación fail-fast**: `LlmConfig.validate()` antes de tocar red/procesos
+`estructuras` es una biblioteca independiente; la usa el frontend (árbol de chats).
+
+---
+
+## Mapa de paquetes
+
+Cada módulo agrupa su código en sub-paquetes por responsabilidad. Los nombres de archivo y de
+paquete cuentan la historia: no hace falta buscarlos en un mapa mental de "frontend".
+
+### `llm-api` — capa de inferencia
+
+| Paquete | Contenido |
+|---------|-----------|
+| `llm.api` | `LlmGateway` (interfaz), `OpenAiCompatibleGateway` (SSE), `ToolSpec`, `LlmChunk` |
+| `llm.config` | `LlmConfig`, `ApiPreset`, `ModelPreset`, `ChatMessage`, `LlmMode` |
+| `llm.error` | `LlmException`, `LlmErrorCode` (errores tipados con código y `retryable`) |
+| `llm.local` | `LlamaManager` (clone/build de llama.cpp), `LocalServerManager` (proceso, puerto, health) |
+| `llm.catalog` | `ModelManager`, `HuggingFaceDownloader`, entradas de catálogo (`ModelEntry`, `HfGgufFile`…) |
+| `llm.service` | `LlmService`: fachada que une gateway + modelo local y decide LOCAL/REMOTE |
+
+`ToolSpec` vive en `llm-api` (y no en `backend`) porque es el gateway quien serializa el catálogo
+en el request `tools[]`; la dependencia va en un solo sentido.
+
+### `backend` — RAG y agente
+
+| Paquete | Contenido |
+|---------|-----------|
+| `rag.config` | `AppConfig`, `AppPaths`, `RagConfig`, perfiles de color |
+| `rag.store` | `ChatStore`: persistencia del árbol de chats (`config/chats.json`) |
+| `rag.retrieval` | `Chunker`, `Bm25Index`, `KnowledgeBase`, `Sources`, modelos de documento |
+| `rag.engine` | `RagEngine`: arma el prompt (system + contexto + historial) y responde |
+| `rag.agent` | Tool calling: `Tool`, `ToolResult`, `ToolContext`, `ToolRegistry`, `AgentLoop`, `PromptToolParser`, `ToolCallSanitizer`, `tools/GetTimeTool` |
+
+### `frontend` — UI
+
+| Paquete | Contenido |
+|---------|-----------|
+| `app` | `Main` (ventana, tema), `NavigationRail` (sidebar colapsable) |
+| `app.core` | Tipos compartidos: `UiState.kt` (`Screen`, `UiMessage`, `UiToolCall`, `UiProgress`), `ChatTree.kt` (`ChatNode`, `ChatRow`, `ChatTree`) |
+| `app.ui` | Render de contenido: `Markdown.kt` (parser + `MarkdownText`), `CodeBlock.kt` (resaltado, copiar, guardar) |
+| `app.chat` | La pantalla de chat: `ChatViewModel` + áreas, `ChatCommands`, `ChatMessages`, `ChatPane`, `ChatSidebar`, `MessageBubble`, `ToolCallCard`, `ComposerBar`, `ChatScreen`, `ChatScrollbarAdapter`, `LoadingPane` |
+| `app.screens` | `ModelsScreen`, `ApisScreen`, `SettingsPane`, `SettingsComponents` |
+
+---
+
+## Tool calling: el modelo pide acciones a la app
+
+El bucle vive en `rag.agent.AgentLoop` y funciona igual en los dos motores, cambiando sólo **cómo
+llegan** las llamadas.
+
+### Modo nativo (REMOTE, API compatible con OpenAI)
+
+1. `AgentLoop` pasa el catálogo (`List<ToolSpec>`) al gateway.
+2. `OpenAiCompatibleGateway` lo manda en el body (`tools[]`) y acumula los `delta.tool_calls`
+   fragmentados del SSE; emite un `LlmChunk.ToolCall` por llamada, ya completa.
+3. La UI la ve como `ToolCallCard` ("Ejecutando…") mientras corre la herramienta.
+
+### Modo por prompt (LOCAL, Phi-4-mini en llama-server)
+
+El servidor local no entiende `tools[]`, así que el catálogo se inyecta en el system prompt con un
+protocolo de bloque delimitado:
+
+````
+```tool_call
+{"tool":"nombre","arguments":{...}}
+```
+````
+
+`PromptToolParser` es incremental (line-buffered): recognise el bloque en cuanto llega y **lo
+retira del texto visible** durante el streaming, de modo que el usuario nunca ve el JSON.
+
+### Reparación y reintentos (el sanitizador)
+
+La salida del modelo llega sucia. `ToolCallSanitizer` (puro, sin I/O ni estado) intenta, en orden:
+
+1. Quitar fences y texto alrededor del bloque.
+2. Recortar al objeto JSON externo (`{ … }`).
+3. Parsear con JSON leniente (`ignoreUnknownKeys`, `isLenient`).
+4. Validar la forma `{"tool"|"name", "arguments"}` (yenvolver `{"arguments":{…}}` si el nombre
+   vino fuera).
+
+Si todo falla devuelve `SanitizedToolCall.Invalid(reason)`, y **ese motivo vuelve al modelo como
+feedback**: el bucle consume la ronda, lo reintenta y sigue.
+
+### Reglas del bucle
+
+| Regla | Comportamiento |
+|-------|----------------|
+| Nunca propagar errores transitorios | JSON roto, herramienta desconocida o fallo al ejecutar **consumen un intento** y generan feedback para el modelo; se devuelve lo acumulado. |
+| La cancelación externa sí se propaga | El botón "Detener" corta la corrutina: `CancellationException` no se traga. |
+| Topes | Máx. 8 rondas modelo+herramienta; 2 reintentos de sanitización; 3 fallos de herramienta consecutivos. |
+| Nunca perder el texto | Si el bucle se agota, se devuelve el texto visible hasta ese punto. |
+
+### RAG + herramientas
+
+`RagEngine.prepare()` separa la construcción del contexto (system prompt + chunks recuperados +
+historial) de la ejecución. El `AgentLoop` reutiliza esos mensajes y agrega sus rondas. El modo
+DOCS sigue exigiendo fuentes: una respuesta sin citas no se entrega como si estuviera respaldada.
+
+---
+
+## Render de markdown y código (F2)
+
+`app.ui` tiene su propio render, sin dependencias externas:
+
+- **`Markdown.kt`**: `parseMarkdown(src)` devuelve un árbol de `MdNode` (`Heading`, `Paragraph`,
+  `Bullets`, `Code`, `Quote`, `Table`, `Divider`) y `MarkdownText` lo pinta con `AnnotatedString`.
+  Los estilos en línea (`**negrita**`, `` `código` ``, `[enlace](url)`) se resuelven en
+  `buildInlineAnnotated`.
+- **`CodeBlock.kt`**: bloque de código con su propio tokenizador y resaltado por lenguaje, botón
+  de **copiar** y **guardar como…** con la extensión real del lenguaje (`.py`, `.kt`, `.cpp`,
+  `.glsl`, `.html`, `.css`, `.js`, `.json`, `.rs`…) y diálogo `JFileChooser` en el EDT de Swing.
+- En `ChatPane`, las respuestas del modelo se renderizan con `MarkdownText`; los mensajes del
+  usuario siguen siendo texto plano.
+
 ---
 
 ## Flujo de Datos Principal
 
 ```
 Usuario escribe -> ChatViewModel.send()
-    |- Si engine listo -> stream tokens -> UI actualiza en tiempo real
+    |- Si engine listo -> AgentLoop (stream) -> UI actualiza token a token
     |- Si engine NO listo -> encola en pendingMessages + muestra "..." en UI
                           |
               boot() en background (corrutina) — por fases con % en UiProgress
-    |- Fase 1: KnowledgeBase.sync() -> indexa docs
+    |- Fase 1: KnowledgeBase.sync() -> indexa docs (globales + del motor activo)
     |- Fase 2: descarga modelo (%, MB/MB)
     |- Fase 3: clonar/compilar llama.cpp si falta (%, sólo LOCAL y sólo si no está)
     |- Fase 4: LlmService.start() -> LocalServerManager.start() -> llama-server en puerto libre
@@ -56,54 +165,75 @@ Usuario escribe -> ChatViewModel.send()
 
 ---
 
+## Estado y organización del frontend
+
+`ChatViewModel` es el dueño del estado: expone `MutableState` que Compose observa. Para que el
+archivo no crezca, **las operaciones se reparten en archivos siblings como funciones de extensión
+sobre el ViewModel** (Kotlin no tiene `partial class`):
+
+| Archivo | Área | Contenido |
+|---------|------|-----------|
+| `ChatViewModel.kt` | núcleo | Estado, tema y perfiles de color, flujo del chat (envío, cola, cancelación, regeneración, edición) |
+| `ChatLibrary.kt` | biblioteca | Árbol de chats y carpetas (crear, renombrar, mover, borrar) y persistencia en `config/chats.json` |
+| `ChatEngine.kt` | motor | Arranque en segundo plano, reinicio del gateway, documentación por motor |
+| `ChatCatalog.kt` | catálogo | Modelos GGUF (descarga, búsqueda en Hugging Face, activación) y APIs remotas (alta, prueba de conexión) |
+| `ChatCommands.kt` | comandos | Comandos de barra (`/help`, `/model`, `/thinking`, `/power`, `/tools`) |
+| `ChatMessages.kt` | mapeo | Conversión entre `UiMessage` y `StoredMessage` (incluidas las tarjetas de herramientas) |
+
+Los miembros que hacen falta desde varias áreas son `internal` (visibles dentro del módulo del
+frontend, no fuera). Las pantallas que usan una extensión la importan explícitamente.
+
+### Estado observable (extracto)
+
+```kotlin
+var screen by mutableStateOf(Screen.CHAT)          // Pantalla actual
+var messages by mutableStateOf(listOf<UiMessage>()) // Historial del chat
+var ready by mutableStateOf(false)                 // Modelo listo?
+var busy by mutableStateOf(false)                  // Generando respuesta?
+var queued by mutableStateOf(false)                // Hay mensajes en cola
+var progress by mutableStateOf<UiProgress?>(null)  // Progreso de descarga/arranque
+var status by mutableStateOf("")                   // Texto de estado
+var error by mutableStateOf("")                    // Error visible (banner)
+```
+
+Reactividad: Compose se suscribe automáticamente a estos `MutableState`; los cambios producen
+recomposición granular.
+
+---
+
 ## Hilos y Concurrencia
 
 | Componente | Dispatcher / Thread | Responsabilidad |
 |------------|---------------------|-----------------|
-| ChatViewModel.scope | Dispatchers.Main (Swing) | Estado UI, corrutinas de vida larga |
-| KnowledgeBase.sync | Dispatchers.IO | I/O disco + red (GitHub) |
-| HuggingFaceDownloader | Dispatchers.IO | Streaming HTTP chunks -> archivo |
-| LlamaManager | Dispatchers.IO | git clone, cmake build, procesos |
-| LocalServerManager | Dispatchers.IO | ProcessBuilder, health polling |
-| RagEngine.ask | Dispatchers.IO | HTTP streaming a gateway |
-| ChatViewModel.testApi | Dispatchers.IO + withTimeout(20 s) | GET /models de prueba ("Probar conexión") |
-| UI updates | Dispatchers.Main | MutableState -> recomposicion Compose |
+| `ChatViewModel.scope` | Dispatchers.Main (Swing) | Estado UI, corrutinas de vida larga |
+| `KnowledgeBase.sync` | Dispatchers.IO | I/O disco + red (GitHub) |
+| `HuggingFaceDownloader` | Dispatchers.IO | Streaming HTTP chunks -> archivo |
+| `LlamaManager` | Dispatchers.IO | git clone, cmake build, procesos |
+| `LocalServerManager` | Dispatchers.IO | ProcessBuilder, health polling |
+| `RagEngine.prepare` / `AgentLoop` | Dispatchers.IO | HTTP streaming al gateway + ejecución de herramientas |
+| `ChatViewModel.testApi` | Dispatchers.IO + withTimeout(20 s) | GET /models de prueba ("Probar conexión") |
+| `JFileChooser` | EDT de Swing | Diálogo "Guardar como…" / "Agregar archivos…" |
+| UI updates | Dispatchers.Main | MutableState -> recomposición Compose |
 
-Regla: Todo I/O bloqueante va a Dispatchers.IO. La UI nunca se bloquea -- boot() lanza en background, el chat es usable inmediatamente.
-
----
-
-## Gestion de Estado (Frontend)
-
-```kotlin
-// ChatViewModel -- estado observable
-var screen by mutableStateOf(Screen.CHAT)        // Pantalla actual
-var messages by mutableStateOf(listOf<UiMessage>()) // Historial chat
-var ready by mutableStateOf(false)               // Modelo listo?
-var busy by mutableStateOf(false)                // Generando respuesta?
-var progress by mutableStateOf<UiProgress?>(null) // Progreso descarga/arranque
-var status by mutableStateOf("...")              // Texto de estado
-var error by mutableStateOf("")                  // Error visible (banner)
-```
-
-Reactividad: Compose se suscribe automaticamente a estos MutableState. Cambios -> recomposicion granular.
+Regla: todo I/O bloqueante va a `Dispatchers.IO`. La UI nunca se bloquea — `boot()` lanza en
+segundo plano y el chat es usable de inmediato.
 
 ---
 
-## Configuracion Persistida
+## Configuración Persistida
 
-Archivo: <app-home>/config/app-config.json
+Archivo: `<app-home>/config/app-config.json`
 
 ```json
 {
   "llm": {
-    "configVersion": 2,
+    "configVersion": 3,
     "mode": "LOCAL",
     "hfRepo": "unsloth/Phi-4-mini-instruct-GGUF",
     "hfFile": "Phi-4-mini-instruct-Q4_K_M.gguf",
     "buildFromSource": true,
-    "modelCatalog": [...],
-    "apiPresets": [...],
+    "modelCatalog": [],
+    "apiPresets": [],
     "uiDark": false,
     "uiAccent": -10401042
   },
@@ -116,9 +246,17 @@ Archivo: <app-home>/config/app-config.json
 }
 ```
 
-- Carga: AppConfig.loadOrCreate() (crea defaults + system prompt + carpeta docs si primera vez)
-- Persistencia: config.save() atomica (escribe JSON pretty-print)
-- **Migracion v1 -> v2** (`configVersion`): en v1 `buildFromSource` era `false` por defecto y existian APIs localhost prefijadas que forzaban el REMOTE a un servidor local vacio; en v2 `buildFromSource=true` (clona/compila llama.cpp solo si falta el binario) y esas APIs se eliminan.
+- Carga: `AppConfig.loadOrCreate()` (crea defaults + system prompt + carpeta docs si es la
+  primera vez).
+- Persistencia: `config.save()` atómica (JSON pretty-print).
+- **Migración por `configVersion`**: la versión actual es **3**. v1→v2: `buildFromSource` pasa a
+  `true` y se eliminan las APIs localhost prefijadas. v2→v3: `chatTimeoutMs = 0` (sin límite de
+  tiempo por respuesta).
+- La v4 (permisos por categoría + MCP) llega con F7.
+
+El árbol de chats vive aparte, en `<app-home>/config/chats.json` (esquema recursivo
+`StoredNode`: carpetas con hijos y chats con mensajes; las tarjetas de herramientas se guardan en
+`StoredMessage.toolCards`).
 
 ---
 
@@ -141,9 +279,12 @@ data class LlmException(
 )
 ```
 
-- retryable = true -> boton "Reintentar" en UI
-- retryable = false -> requiere accion del usuario (config, instalar git/cmake)
-- Logs: LocalServerManager guarda tail (ultimos 40 KB) en llama-server.log y lo adjunta a excepciones
+- `retryable = true` -> botón "Reintentar" en la UI.
+- `retryable = false` -> requiere acción del usuario (config, instalar git/cmake).
+- Logs: `LocalServerManager` guarda el tail (últimos 40 KB) en `llama-server.log` y lo adjunta a
+  las excepciones.
+- Los errores del modelo en tool calling **no** son excepciones: son feedback (`Invalid.reason`)
+  que vuelve al modelo para que reintente.
 
 ---
 
@@ -151,36 +292,47 @@ data class LlmException(
 
 | Archivo | Responsabilidad |
 |---------|-----------------|
-| Main.kt | Entry point, ventana, tema dinamico |
-| ChatScreen.kt | Layout raiz: sidebar + contenido + banner carga |
-| NavigationRailPane.kt | Sidebar colapsable (200/72dp), animado, etiqueta "Motor" |
-| ChatPane.kt | UI chat: lista burbujas, input, botones cancelar/enviar |
-| ModelsPane.kt | Catalogo modelos: descargar/activar (o "Descargar y usar"), agregar HF |
-| ApisScreen.kt (ApisPane.kt) | "Motor": segmentado LOCAL/REMOTE, coleccion APIs (prellenado), probar conexion |
-| SettingsPane.kt | Tema claro/oscuro, color acento, modo LOCAL/REMOTE |
-| LoadingPane.kt | Pantalla carga completa (fallback, retry) |
-| ModelLoadingBanner.kt | Banner superior no intrusivo durante carga background |
+| `app/Main.kt` | Entry point, ventana, tema dinámico |
+| `app/NavigationRail.kt` | Sidebar colapsable (200/72dp), animado; "Chat / Modelos / Motor / Config" |
+| `app/chat/ChatScreen.kt` | Layout raíz: sidebar + contenido + banner de carga |
+| `app/chat/ChatPane.kt` | UI del chat: lista de burbujas, sidebar de chats y redactor |
+| `app/chat/ChatSidebar.kt` | Árbol de chats/carpetas (drag & drop, click derecho) |
+| `app/chat/MessageBubble.kt` | Burbuja de mensaje (usuario / modelo) con copiar y reiniciar |
+| `app/chat/ToolCallCard.kt` | Tarjeta de herramienta: nombre, argumentos, estado y resultado |
+| `app/chat/ComposerBar.kt` | Redactor, cola de mensajes y botones enviar/detener |
+| `app/chat/ChatScrollbarAdapter.kt` | Scrollbar de altura estable (no salta con respuestas largas) |
+| `app/chat/LoadingPane.kt` | Pantalla de carga completa (fallback + reintentar) |
+| `app/screens/ModelsScreen.kt` | Catálogo de modelos: descargar/activar, agregar repo de HF |
+| `app/screens/ApisScreen.kt` | Motor: LOCAL/REMOTE, colección de APIs, prueba de conexión, docs por API |
+| `app/screens/SettingsPane.kt` | Tema claro/oscuro, color de acento |
+| `app/screens/SettingsComponents.kt` | `themeOption`, `RadioGroup` reutilizables |
+| `app/ui/Markdown.kt`, `app/ui/CodeBlock.kt` | Render de markdown y de bloques de código |
 
-Los paneles largos (Motor, Config, Modelos) usan `verticalScroll` + `VerticalScrollbar`/`rememberScrollbarAdapter` (no `LazyColumn`) para conservar el scroll del mouse.
+Los paneles largos (Motor, Config, Modelos) usan `verticalScroll` + `VerticalScrollbar`
+(`rememberScrollbarAdapter`, no `LazyColumn`) para conservar el scroll del mouse.
 
 ---
 
 ## Extensibilidad
 
-1. Nuevas fuentes RAG: Implementar DocSource + agregar a KnowledgeBase.sync()
-2. Nuevos proveedores LLM: Implementar LlmGateway + registrar en LlmService.start()
-3. Nuevas pantallas: Anadir a Screen enum + case en ChatScreen.kt + item en NavigationRailPane
-4. Config extra: Extender LlmConfig / RagConfig (serializacion automatica con @Serializable)
+1. **Nueva herramienta**: implementa `Tool` en `rag.agent`, regístrala en `ToolRegistry` (el
+   ViewModel la instancia en `ChatViewModel.tools`).
+2. **Nueva fuente RAG**: implementa `DocSource` y agrégala a `KnowledgeBase.sync()`.
+3. **Nuevo proveedor LLM**: implementa `LlmGateway` y regístralo en `LlmService.start()`.
+4. **Nueva pantalla**: añade el valor al enum `Screen`, el `case` en `ChatScreen` y el item en
+   `NavigationRail`.
+5. **Config extra**: extiende `LlmConfig` / `RagConfig` (serialización automática con
+   `@Serializable`).
 
 ---
 
-## Requisitos de Ejecucion
+## Requisitos de Ejecución
 
 - JDK 21 (Eclipse Temurin recomendado)
 - Git en PATH (para clonar llama.cpp)
-- CMake 3.20+ (solo si llm.buildFromSource=true)
-- Ollama / LM Studio (opcional, para modo REMOTE)
-- Windows/Linux/macOS -- Compose Desktop genera instaladores nativos
+- CMake 3.20+ (sólo si `llm.buildFromSource = true`)
+- API compatible con OpenAI (opcional, para modo REMOTE)
+- Windows/Linux/macOS — Compose Desktop genera instaladores nativos
 
 ---
 
@@ -189,14 +341,15 @@ Los paneles largos (Motor, Config, Modelos) usan `verticalScroll` + `VerticalScr
 ```
 ~/.docs-chatbot/  (o $DOCS_CHATBOT_HOME o -Dapp.home=...)
 ├── config/
-│   ├── app-config.json
-│   └── system_prompt.md
-├── models/           # GGUF descargados
-├── llama.cpp/        # Clon + build (si buildFromSource)
+│   ├── app-config.json      # configuración persistida
+│   ├── chats.json           # árbol de chats (carpetas + mensajes + tool cards)
+│   └── system_prompt.md     # prompt del sistema (editable)
+├── models/                  # GGUF descargados
+├── llama.cpp/               # clon + build (si buildFromSource)
+├── api-docs/<id>/           # documentación por motor (API o "local")
 ├── logs/
 │   ├── llama-server.log
 │   └── llama-build.log
-├── data/
-│   └── cache/        # Repos GitHub clonado para indexacion
-└── internal-docs/    # Docs locales del usuario (.md, .txt, .rst, .adoc)
+├── data/cache/              # repos GitHub clonados para indexación
+└── internal-docs/           # docs locales del usuario (.md, .txt, .rst, .adoc)
 ```

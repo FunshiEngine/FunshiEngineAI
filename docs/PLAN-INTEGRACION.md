@@ -278,24 +278,32 @@ Notas por si se retoma:
 
 ## 11. Arquitectura objetivo (archivos nuevos/modificados)
 
+Rutas actualizadas a la estructura modular (`docs/ARCHITECTURE.md`); lo que ya existe
+(F1, F2) va marcado con ✅.
+
 ```
 backend/
-  agent/Tool.kt              # ToolSpec, Tool, ToolResult, ToolContext
-  agent/ToolRegistry.kt      # registro con origen LOCAL|MCP
-  agent/AgentLoop.kt         # bucle de tool calling
-  agent/tools/WebTools.kt    # web_search, web_fetch (+ SearchProvider)
-  agent/tools/FileTools.kt   # create_file, download_url
-  agent/tools/LatexTool.kt   # latex_compile (F5b)
-  mcp/McpToolAdapter.kt      # contrato McpConnection (preparación)
+  rag/agent/Tool.kt                 ✅ ToolSpec, Tool, ToolResult, ToolContext
+  rag/agent/ToolRegistry.kt         ✅ registro con origen LOCAL|MCP
+  rag/agent/AgentLoop.kt            ✅ bucle de tool calling
+  rag/agent/ToolCallSanitizer.kt    ✅ reparación del JSON que devuelve el modelo
+  rag/agent/PromptToolParser.kt     ✅ parser del bloque ```tool_call (modo LOCAL)
+  rag/agent/tools/GetTimeTool.kt    ✅ herramienta de prueba
+  rag/agent/tools/WebTools.kt       # web_search, web_fetch (+ SearchProvider)
+  rag/agent/tools/FileTools.kt      # create_file, download_url
+  rag/agent/tools/LatexTool.kt      # latex_compile (F5b)
+  rag/mcp/McpToolAdapter.kt         # contrato McpConnection (preparación)
 llm-api/
-  LlmGateway.kt              # + LlmChunk tipado y tools en chatStream
-  GradioSpaceGateway.kt      # HF Spaces (§10)
+  llm/api/LlmGateway.kt             ✅ + LlmChunk tipado y tools en chatStream
+  llm/api/Tools.kt                  ✅ ToolSpec (catálogo para el request)
+  llm/api/GradioSpaceGateway.kt     # HF Spaces (§10)
 frontend/
-  Markdown.kt                # renderer
-  CodeBlock.kt               # highlight + guardar/exportar
-  AttachmentCard.kt          # adjuntos descargables
-  ToolCallCard.kt            # tarjeta de herramienta en uso
-  ChatViewModel.kt           # AgentLoop, permisos por chat, /comandos
+  app/ui/Markdown.kt                ✅ renderer
+  app/ui/CodeBlock.kt               ✅ highlight + copiar + guardar/exportar
+  app/chat/ToolCallCard.kt          ✅ tarjeta de herramienta en uso
+  app/chat/ChatViewModel.kt         # AgentLoop, permisos por chat, /comandos
+  app/chat/ChatCommands.kt          ✅ comandos de barra (extensión del ViewModel)
+  app/chat/AttachmentCard.kt        # adjuntos descargables
 ```
 
 Config v3 → v4: secciones `tools`, `outputs`, `latex`, `mcp` con migración
@@ -305,15 +313,15 @@ automática (patrón `configVersion` existente).
 
 ## 12. Fases de implementación
 
-| Fase | Contenido | Dependencias |
-|------|-----------|--------------|
-| **F1** | LlmChunk + tools en gateway OpenAI + AgentLoop + ToolRegistry + ToolCallCard + tool de prueba (`get_time`) | — |
-| **F2** | Renderer markdown + CodeBlock con highlight + extensiones + Guardar como… | — |
-| **F3** | `create_file` + `download_url` + AttachmentCard + permisos FILES + `/permitir-archivos` | F1 |
-| **F4** | `web_search` (DuckDuckGo) + `web_fetch` + permisos WEB + `/permitir-web` + escenario E2E del PDF | F1, F3 |
-| **F5** | Math con JLaTeXMath + `latex_compile` → PDF (autodetección TinyTeX/MiKTeX) | F2, F3 |
-| **F6** | `GradioSpaceGateway` para HF Spaces | **CONGELADA** — decisión pendiente (ver §10) |
-| **F7** | Contrato MCP + registro con orígenes + config v4 + pantalla de permisos + documentación | F1–F4 |
+| Fase | Contenido | Dependencias | Estado |
+|------|-----------|--------------|--------|
+| **F1** | LlmChunk + tools en gateway OpenAI + AgentLoop + ToolRegistry + ToolCallCard + tool de prueba (`get_time`) | — | ✅ 2026-10-20 |
+| **F2** | Renderer markdown + CodeBlock con highlight + extensiones + Guardar como… | — | ✅ 2026-10-20 |
+| **F3** | `create_file` + `download_url` + AttachmentCard + permisos FILES + `/permitir-archivos` | F1 | Pendiente |
+| **F4** | `web_search` (DuckDuckGo) + `web_fetch` + permisos WEB + `/permitir-web` + escenario E2E del PDF | F1, F3 | Pendiente |
+| **F5** | Math con JLaTeXMath + `latex_compile` → PDF (autodetección TinyTeX/MiKTeX) | F2, F3 | Pendiente |
+| **F6** | `GradioSpaceGateway` para HF Spaces | **CONGELADA** — decisión pendiente (ver §10) | — |
+| **F7** | Contrato MCP + registro con orígenes + config v4 + pantalla de permisos + documentación | F1–F4 | Pendiente |
 
 F2 es independiente de F1 y puede hacerse en paralelo.
 

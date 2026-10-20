@@ -10,15 +10,18 @@ y se mueve a `docs/CHANGES.md` en el próximo registro de versión.
 ### 0. Integración por fases: herramientas, formatos, web, archivos, LaTeX, HF Spaces, MCP
 
 **Estado:** PLANIFICADO (2026-10-19) — diseño completo en `docs/PLAN-INTEGRACION.md`
-(decisiones cerradas con el usuario; ver §2 de ese documento). **F1 IMPLEMENTADO (2026-10-20), compilado.**
+(decisiones cerradas con el usuario; ver §2 de ese documento). **F1 y F2 IMPLEMENTADOS
+(2026-10-20), compilados.**
 
 Implementación por fases (orden acordado):
 
 - [x] **F1**: `LlmChunk` tipado + `tools` en gateway OpenAI-compatible +
       `AgentLoop` + `ToolRegistry` + `ToolCallCard` + tool de prueba `get_time`.
       Tool-calling híbrido: nativo en REMOTE, JSON delimitado por prompt en LOCAL.
-- [ ] **F2**: Renderer markdown propio + `CodeBlock` con syntax highlight +
-      extensiones reales (`.py`, `.kt`, `.cpp`, `.glsl`…) + "Guardar como…".
+- [x] **F2**: Renderer markdown propio (`app/ui/Markdown.kt`: parser `MdNode` +
+      `MarkdownText`) + `CodeBlock` con syntax highlight propio, copiar y
+      "Guardar como…" con extensiones reales (`.py`, `.kt`, `.cpp`, `.glsl`,
+      `.html`, `.css`, `.js`, `.json`, `.rs`…).
 - [ ] **F3**: `create_file` + `download_url` + `AttachmentCard` + permisos FILES
       + comando `/permitir-archivos` (permisos por categoría, default off,
       asociados al chat activo).
@@ -210,3 +213,39 @@ Criterios de aceptación:
 - [x] Agregar archivos desde el sistema (se copian al motor y se indexan).
 - [x] Eliminar archivos (se borran y se reindexa si el motor está activo).
 - [x] Persistencia al reinicio (carpeta propia en `app-home/api-docs/`).
+
+---
+
+### 5. Modularización de la arquitectura y reescritura de la documentación
+
+**Estado:** IMPLEMENTADO (2026-10-20) — compilado y verificado en runtime.
+
+Qué se hizo:
+
+- **Paquetes por área** en los tres módulos (el mapa completo está en
+  `docs/ARCHITECTURE.md`):
+  - `llm-api`: `llm.api`, `llm.config`, `llm.error`, `llm.local`, `llm.catalog`,
+    `llm.service`.
+  - `backend`: `rag.config`, `rag.store`, `rag.retrieval`, `rag.engine`, `rag.agent`.
+  - `frontend`: `app`, `app.core`, `app.ui`, `app.chat`, `app.screens`.
+- **Archivos grandes partidos** en unidades con una responsabilidad cada una:
+  - `ChatPane.kt` → `ChatPane` + `ChatSidebar` + `MessageBubble` + `ToolCallCard` +
+    `ComposerBar`.
+  - `ChatViewModel.kt` (1.158 líneas) → `ChatViewModel` (núcleo: estado, tema y
+    flujo del chat) + `ChatLibrary` + `ChatEngine` + `ChatCatalog` + `ChatCommands` +
+    `ChatMessages`. Como Kotlin no tiene `partial class`, las operaciones de cada
+    área son **funciones de extensión sobre el ViewModel** (el estado sigue siendo
+    del ViewModel; lo que se reparte es el código).
+  - Members compartidos entre áreas pasan a `internal` (visibles sólo dentro del
+    módulo del frontend).
+- **Documentación reescrita**: `docs/ARCHITECTURE.md` (mapa de paquetes, tool
+  calling, render markdown/código, concurrencia, config), `docs/CHANGES.md`
+  (v0.6.0) y `README.md`.
+
+Criterios de aceptación:
+
+- [x] Los tres módulos compilan (`llm-api`, `backend`, `frontend`).
+- [x] La app arranca y renderiza igual que antes del refactor.
+- [x] Ningún archivo supera ~600 líneas y cada uno tiene una responsabilidad
+      única.
+- [x] La documentación refleja la estructura real del código.
