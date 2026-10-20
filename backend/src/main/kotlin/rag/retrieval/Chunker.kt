@@ -1,7 +1,5 @@
 package rag.retrieval
 
-
-
 /** Parte documentos por encabezados Markdown y luego por tamaño, con solapamiento. */
 object Chunker {
     fun split(doc: Doc, size: Int, overlap: Int): List<Chunk> {

@@ -1,7 +1,5 @@
 package llm.error
 
-
-
 /**
  * Errores tipados del backend LLM: cada error sabe si es reintentable o
  * terminal, para que quien llama decida sin parsear mensajes de texto.

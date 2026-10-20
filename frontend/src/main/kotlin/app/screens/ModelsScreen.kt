@@ -18,6 +18,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.chat.ChatViewModel
+import app.chat.activateModel
+import app.chat.addModel
+import app.chat.cancelDownload
+import app.chat.downloadModel
+import app.chat.listRepoFiles
+import app.chat.removeModel
+import app.chat.searchModels
 import app.core.UiProgress
 import app.core.humanSize
 import llm.catalog.HfGgufFile

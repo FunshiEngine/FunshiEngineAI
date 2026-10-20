@@ -18,6 +18,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.chat.ChatViewModel
+import app.chat.activateApi
+import app.chat.addDocsFiles
+import app.chat.configMode
+import app.chat.listDocs
+import app.chat.removeApi
+import app.chat.removeDocsFile
+import app.chat.saveApi
+import app.chat.setConfigMode
+import app.chat.testApi
+import app.chat.useLocal
 import app.core.Screen
 import app.core.humanSize
 import java.nio.file.Path

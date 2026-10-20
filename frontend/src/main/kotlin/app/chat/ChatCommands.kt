@@ -1,12 +1,12 @@
 package app.chat
 
+import app.core.UiMessage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import llm.api.OpenAiCompatibleGateway
 import llm.config.LlmMode
-import app.core.UiMessage
 
 /**
  * Comandos de chat (los que empiezan con `/`).

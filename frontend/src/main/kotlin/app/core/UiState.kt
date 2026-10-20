@@ -1,7 +1,5 @@
 package app.core
 
-
-
 /** Pantalla visible del asistente. */
 enum class Screen { LOADING, CHAT, MODELS, APIS, SETTINGS }
 

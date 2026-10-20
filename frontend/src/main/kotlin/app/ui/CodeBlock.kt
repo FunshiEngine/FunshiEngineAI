@@ -37,7 +37,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import app.main
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.io.File
