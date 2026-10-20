@@ -62,7 +62,7 @@ en el request `tools[]`; la dependencia va en un solo sentido.
 | `rag.store` | `ChatStore`: persistencia del árbol de chats (`config/chats.json`) |
 | `rag.retrieval` | `Chunker`, `Bm25Index`, `KnowledgeBase`, `Sources`, modelos de documento |
 | `rag.engine` | `RagEngine`: arma el prompt (system + contexto + historial) y responde |
-| `rag.agent` | Tool calling: `Tool`, `ToolResult`, `ToolContext`, `ToolRegistry`, `AgentLoop`, `PromptToolParser`, `ToolCallSanitizer`, `ToolPermissions`, `tools/GetTimeTool`, `tools/FileTools`, `tools/WebTools` |
+| `rag.agent` | Tool calling: `Tool`, `ToolResult`, `ToolContext`, `ToolRegistry`, `AgentLoop`, `PromptToolParser`, `ToolCallSanitizer`, `ToolPermissions`, `tools/GetTimeTool`, `tools/FileTools`, `tools/WebTools`, `tools/LatexTool` |
 
 ### `frontend` — UI
 
@@ -70,7 +70,7 @@ en el request `tools[]`; la dependencia va en un solo sentido.
 |---------|-----------|
 | `app` | `Main` (ventana, tema), `NavigationRail` (sidebar colapsable) |
 | `app.core` | Tipos compartidos: `UiState.kt` (`Screen`, `UiMessage`, `UiToolCall`, `UiProgress`), `ChatTree.kt` (`ChatNode`, `ChatRow`, `ChatTree`) |
-| `app.ui` | Render de contenido: `Markdown.kt` (parser + `MarkdownText`), `CodeBlock.kt` (resaltado, copiar, guardar) |
+| `app.ui` | Render de contenido: `Markdown.kt` (parser + `MarkdownText`), `CodeBlock.kt` (resaltado, copiar, guardar), `MathRender.kt` (F5: TeX → imagen con JLaTeXMath) |
 | `app.chat` | La pantalla de chat: `ChatViewModel` + áreas, `ChatCommands`, `ChatMessages`, `ChatPane`, `ChatSidebar`, `MessageBubble`, `ToolCallCard`, `ComposerBar`, `ChatScreen`, `ChatScrollbarAdapter`, `LoadingPane` |
 | `app.screens` | `ModelsScreen`, `ApisScreen`, `SettingsPane`, `SettingsComponents` |
 
@@ -293,6 +293,74 @@ basura: avisa que use `download_url`, que lo baja y lo deja como adjunto.
 
 ---
 
+## Matemática y LaTeX (F5)
+
+F5 tiene dos partes independientes: dibujar la matemática en el chat y
+convertir un documento LaTeX en PDF.
+
+### F5a — La matemática se dibuja (frontend)
+
+`app.ui.MathRender` (`frontend/app/ui/MathRender.kt`) renderiza una fórmula
+TeX a un `BufferedImage` **en memoria** con **JLaTeXMath 1.0.7** (Java puro:
+no hace falta TeX instalado, ni red, ni escribir a disco). La imagen sale en
+negro y se recolorea al `onSurface` del tema, para que se lea en claro y en
+oscuro.
+
+El flujo dentro del render de markdown es:
+
+```text
+Markdown.kt  parseMarkdown(src)
+    -> MdNode.Math(latex, display)        (nodo nuevo, F5)
+    -> buildAnnotatedWithMath()            (inline: appendInlineContent + Placeholder)
+    -> MathRender.render(latex, display)   (imagen)
+    -> ImageBitmap / DrawScope
+```
+
+`MathRender.splitMath` decide qué es fórmula y qué es texto. Las reglas
+existen para no romper la prosa ni el streaming:
+
+| Entrada | Resultado |
+|---------|-----------|
+| `$x^2$` | fórmula inline |
+| `$$x^2$$` | fórmula de display |
+| `$5 y $10` | texto (el `$` de cierre no puede ir seguido de dígito) |
+| `` `$x$` `` | texto (el código en línea no es matemática) |
+| `$x + y` (sin cerrar) | texto (seguro con streaming) |
+
+### F5b — `latex_compile`: LaTeX → PDF (backend)
+
+`rag.agent.tools.LatexCompileTool` (`backend/rag/agent/tools/LatexTool.kt`) es
+de la categoría `FILES`: pide permiso como `create_file`.
+
+```text
+document + name? + engine?
+    -> valida (documento vacío, tope de 1 MB, nombre saneado)
+    -> busca el motor en el PATH: pdflatex, xelatex
+         (sin motor -> ERROR con guía de instalación: fail-fast)
+    -> escribe <nombre>.tex en outputs/<chat-id>/
+         (si el fragmento no trae \documentclass, se le pone preámbulo)
+    -> compila en un directorio temporal (los .aux y .log no ensucian outputs)
+    -> copia el PDF a outputs/<chat-id>/<nombre>.pdf
+    -> ToolResult.Ok(artifacts = [PDF, TEX])  -> AttachmentCard
+```
+
+| Detalle | Decisión |
+|---------|----------|
+| Motor | `pdflatex` primero, `xelatex` después; el modelo puede pedir uno con `engine` |
+| Sin TeX instalado | Error con guía (TeX Live / MiKTeX) — nunca un PDF vacío |
+| Timeout | 60 s de compilación |
+| Tope | 1 MB de documento, 60 caracteres de nombre |
+| Salida | Dos adjuntos: el PDF y el `.tex` (el usuario puede corregir y recompilar) |
+
+El motor se ejecuta con `-interaction=nonstopmode -halt-on-error
+-file-line-error`, y su salida se lee en un hilo aparte para no llenar el
+buffer del proceso. Si la compilación falla, del log se extraen las líneas de
+error de LaTeX (las `!` y las `archivo:línea:`) con la línea del `.tex` donde
+estaba el problema: ese error vuelve al modelo, que puede corregir y volver a
+intentar.
+
+---
+
 ## Flujo de Datos Principal
 
 ```
@@ -487,6 +555,9 @@ Los paneles largos (Motor, Config, Modelos) usan `verticalScroll` + `VerticalScr
 - CMake 3.20+ (sólo si `llm.buildFromSource = true`)
 - API compatible con OpenAI (opcional, para modo REMOTE)
 - Windows/Linux/macOS — Compose Desktop genera instaladores nativos
+- **TeX Live o MiKTeX (opcional, sólo para `latex_compile`)**: sin él, la
+  matemática del chat funciona igual (JLaTeXMath) y la tool devuelve un error
+  con la guía de instalación.
 
 ---
 

@@ -37,6 +37,7 @@ import rag.agent.ToolRegistry
 import rag.agent.tools.CreateFileTool
 import rag.agent.tools.DownloadUrlTool
 import rag.agent.tools.GetTimeTool
+import rag.agent.tools.LatexCompileTool
 import rag.agent.tools.WebFetchTool
 import rag.agent.tools.WebSearchTool
 import rag.config.AppConfig
@@ -80,6 +81,7 @@ class ChatViewModel {
             DownloadUrlTool(),
             WebSearchTool(),
             WebFetchTool(),
+            LatexCompileTool(),
         ),
     )
     internal var chatJob: Job? = null

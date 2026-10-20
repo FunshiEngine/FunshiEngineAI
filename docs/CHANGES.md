@@ -1,5 +1,67 @@
 # Registro de Cambios - FunshiEngineAI
 
+## v0.9.0 (2026-10-20) — F5: matemática en el chat y compilación LaTeX → PDF
+
+### ✨ Nuevas Características
+
+#### F5a — La matemática se dibuja en el chat (JLaTeXMath, offline)
+- **`frontend/app/ui/MathRender.kt`** (nuevo): renderiza una fórmula TeX a una
+  imagen **en memoria** con **JLaTeXMath 1.0.7** (biblioteca de Java pura, sin
+  TeX instalado y sin red). La imagen se recolorea al `onSurface` del tema, así
+  que se lee igual en claro y en oscuro.
+- **`frontend/app/ui/Markdown.kt`**: el parser de markdown reconoce la
+  matemática como un nodo más (`MdNode.Math`). La fórmula inline (`$…$`) se
+  dibuja con `appendInlineContent` en medio del párrafo; la de display
+  (`$$…$$`) va como bloque centrado.
+- Reglas de parsing, pensadas para no romper la prosa:
+  - El `$` de cierre **no puede** ir seguido de un dígito: `$5 … $10` es texto
+    común, no una fórmula.
+  - Un `$` sin cerrar se queda como texto plano: con streaming es lo normal y
+    no debe romper el párrafo a medio render.
+  - El código en línea (`` `$x$` ``) nunca se interpreta como matemática.
+- **No hace falta TeX**: la matemática del chat funciona aunque no haya ningún
+  motor de LaTeX instalado (que es justo el caso de la máquina donde se
+  desarrolló).
+
+#### F5b — `latex_compile`: de LaTeX a PDF
+- **`backend/rag/agent/tools/LatexTool.kt`** (nuevo): tool de la categoría
+  **FILES**, así que pide permiso como `create_file` (apagado por defecto, se
+  concede por chat con `/permitir-archivos`).
+- **Busca el motor en el PATH**: `pdflatex` primero, `xelatex` después (sin
+  lanzar procesos: sólo mira el disco). El modelo puede pedir uno u otro con
+  el argumento `engine`; si pide uno que no está instalado, el error lo dice.
+- **Fail-fast**: si no hay ningún motor, la herramienta devuelve un error con
+  la **guía de instalación** (TeX Live o MiKTeX) en lugar de un PDF que no
+  sale. Es el mismo patrón del proyecto: fallar claro y temprano.
+- **Documentos parciales**: si el modelo manda un fragmento sin
+  `\documentclass`, se le envuelve en un preámbulo estándar (`article`,
+  `inputenc`, `amsmath`, `geometry`). Con `\documentclass` se usa tal cual.
+- **Directorio de trabajo temporal**: la compilación corre en una carpeta
+  aparte, así que los `.aux`, `.log` y compañía no ensucian la carpeta del
+  chat. Al final sólo quedan el `.tex` y el `.pdf`.
+- **Salida**: `ToolResult.Ok` con dos `Artifact` — el PDF (`application/pdf`)
+  y el código fuente (`application/x-tex`) — que la UI muestra como tarjetas
+  de adjunto (Abrir / Guardar).
+- **Límites**: 1 MB de documento, 60 s de compilación y 60 caracteres para el
+  nombre del archivo (el nombre se sanea: no puede traer rutas).
+
+### 🔧 Cambios internos
+- `ToolRegistry` arranca con `get_time`, `create_file`, `download_url`,
+  `web_search`, `web_fetch` y `latex_compile`.
+- `ToolContext` lleva `outputsDir`, así que `latex_compile` escribe en la
+  carpeta del chat (`app-home/outputs/<chat-id>/`) y no en cualquier lado.
+- Todo el I/O de `latex_compile` (escribir, compilar, copiar) corre en
+  `Dispatchers.IO`.
+- Dependencia nueva en `frontend`: `org.scilab.forge:jlatexmath:1.0.7`.
+
+### 🔒 Sin cambios de comportamiento visible
+- `configVersion` sigue en 3 (la config v4 llega en F7).
+- Sin permiso `FILES` concedido, `latex_compile` no llega a ejecutarse.
+- La matemática se dibuja siempre que el modelo escribe `$…$`: no depende de
+  permisos ni de que haya TeX instalado.
+
+---
+
 ## v0.8.0 (2026-10-20) — F4: búsqueda en la web y lectura de páginas
 
 ### ✨ Nuevas Características

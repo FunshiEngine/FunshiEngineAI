@@ -13,6 +13,8 @@ dependencies {
     implementation(compose.material3)
     implementation(compose.materialIconsExtended)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.9.0")
+    // Math en el chat: render de LaTeX a imagen, offline y sin servicios (F5).
+    implementation("org.scilab.forge:jlatexmath:1.0.7")
 }
 
 // En desarrollo, todo (config, modelos, docs internas) vive en <raíz>/app-home

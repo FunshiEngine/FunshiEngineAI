@@ -273,11 +273,48 @@ v4 (`configVersion: 4`) llega en F7.
 - **F5a — Math en chat**: `$...$` y `$$...$$` renderizados con **JLaTeXMath**
   (bitmap en memoria, offline). Streaming-friendly: se renderiza por fragmentos
   estables.
-- **F5b — Documentos → PDF**: comando `/latex` o tool `latex_compile(document)`
-  (categoría FILES): escribe `doc.tex` en outputs, invoca `pdflatex`/`xelatex`
-  detectado en PATH (TinyTeX/MiKTeX). Si no está instalado → resultado de error
-  claro con guía de instalación (fail-fast, patrón del proyecto). El PDF sale
-  como `AttachmentCard`.
+- **F5b — Documentos → PDF**: tool `latex_compile(document)` (categoría FILES):
+  escribe el `.tex` en outputs, invoca `pdflatex`/`xelatex` detectado en PATH
+  (TinyTeX/MiKTeX). Si no está instalado → resultado de error claro con guía
+  de instalación (fail-fast, patrón del proyecto). El PDF sale como
+  `AttachmentCard`.
+
+### 8.1 F5a — matemática en el chat (JLaTeXMath)
+
+- **`frontend/app/ui/MathRender.kt`** (nuevo): renderiza una fórmula TeX a un
+  `BufferedImage` **en memoria** (sin escribir a disco, sin red). Se recolorea
+  al `onSurface` del tema, así que anda en claro y en oscuro.
+- **`frontend/app/ui/Markdown.kt`**: el parser de markdown reconoce la
+  matemática como un nodo más (`MdNode.Math`) y la dibuja con
+  `appendInlineContent` (inline) o como bloque (display).
+- Reglas de parsing (a propósito, para no romper la prosa):
+  - `$$…$$` = display, `$…$` = inline.
+  - El `$` de cierre **no puede** ir seguido de un dígito: `$5 … $10` es texto,
+    no matemática.
+  - Un `$` sin cerrar se queda como texto plano (seguro con streaming).
+  - El código en línea `` `…` `` nunca es matemática.
+- **No** hace falta TeX instalado: JLaTeXMath es una biblioteca de Java pura.
+
+### 8.2 F5b — `latex_compile`: LaTeX → PDF
+
+- **`backend/rag/agent/tools/LatexTool.kt`** (nuevo): tool de la categoría
+  **FILES** (pide permiso como `create_file`).
+- El motor se busca en el **PATH** (sin lanzar procesos): `pdflatex` primero,
+  `xelatex` después. El modelo puede pedir uno u otro con el argumento
+  `engine`; si pide uno que no está, el error lo dice.
+- **Fail-fast**: si no hay ningún motor, la herramienta devuelve un error con
+  la guía de instalación (TeX Live / MiKTeX). Es preferible a un PDF que no
+  sale.
+- El `.tex` se escribe en `outputs/<chat-id>/`; si el modelo manda un
+  fragmento sin `\documentclass`, se le envuelve en un preámbulo estándar
+  (`article`, `inputenc`, `amsmath`, `geometry`).
+- La compilación corre en un **directorio temporal**: los `.aux`, `.log` y
+  demás no ensucian la carpeta del chat. Al final sólo quedan el `.tex` y el
+  `.pdf`.
+- Salida: `ToolResult.Ok` con dos `Artifact` (el PDF y el `.tex`), que la UI
+  muestra como `AttachmentCard` (Abrir / Guardar).
+- Tope: 1 MB de documento y 60 s de compilación.
+
 
 ---
 
@@ -347,7 +384,7 @@ backend/
   rag/agent/tools/GetTimeTool.kt    ✅ herramienta de prueba
   rag/agent/tools/WebTools.kt       ✅ web_search, web_fetch (+ SearchProvider)
   rag/agent/tools/FileTools.kt      ✅ create_file, download_url
-  rag/agent/tools/LatexTool.kt      # latex_compile (F5b)
+  rag/agent/tools/LatexTool.kt      ✅ latex_compile (F5b)
   rag/mcp/McpToolAdapter.kt         # contrato McpConnection (preparación)
 llm-api/
   llm/api/LlmGateway.kt             ✅ + LlmChunk tipado y tools en chatStream
@@ -355,6 +392,7 @@ llm-api/
   llm/api/GradioSpaceGateway.kt     # HF Spaces (§10)
 frontend/
   app/ui/Markdown.kt                ✅ renderer
+  app/ui/MathRender.kt              ✅ F5a: JLaTeXMath -> imagen en memoria
   app/ui/CodeBlock.kt               ✅ highlight + copiar + guardar/exportar
   app/chat/ToolCallCard.kt          ✅ tarjeta de herramienta en uso
   app/chat/ChatViewModel.kt         ✅ AgentLoop, permisos por chat, /comandos
@@ -377,7 +415,7 @@ automática (patrón `configVersion` existente).
 | **F2** | Renderer markdown + CodeBlock con highlight + extensiones + Guardar como… | — | ✅ 2026-10-20 |
 | **F3** | `create_file` + `download_url` + AttachmentCard + permisos FILES + `/permitir-archivos` | F1 | ✅ 2026-10-20 |
 | **F4** | `web_search` (DuckDuckGo + respaldo Wikipedia) + `web_fetch` + permisos WEB + `/permitir-web` + escenario E2E del PDF | F1, F3 | ✅ 2026-10-20 |
-| **F5** | Math con JLaTeXMath + `latex_compile` → PDF (autodetección TinyTeX/MiKTeX) | F2, F3 | Pendiente |
+| **F5** | Math con JLaTeXMath + `latex_compile` → PDF (autodetección TinyTeX/MiKTeX) | F2, F3 | ✅ 2026-10-20 |
 | **F6** | `GradioSpaceGateway` para HF Spaces | **CONGELADA** — decisión pendiente (ver §10) | — |
 | **F7** | Contrato MCP + registro con orígenes + config v4 + pantalla de permisos + documentación | F1–F4 | Pendiente |
 
@@ -391,7 +429,7 @@ F2 es independiente de F1 y puede hacerse en paralelo.
 |--------|---------|------------|
 | Phi-4-mini genera JSON de tool call inválido o alucina tools | Falla del loop | Delimitador estricto + validación JSON + degradar a respuesta normal con nota |
 | Space Gradio cambia de firma | Se rompe el gateway | Validación al conectar + error claro + plantilla parametrizable |
-| `pdflatex` ausente | LaTeX-docs no funciona | Fail-fast con guía de instalación (math igual funciona) |
+| `pdflatex` ausente | LaTeX-docs no funciona | **Mitigado (F5b)**: la tool falla rápido con guía de instalación; la math del chat (JLaTeXMath) no necesita TeX |
 | Bloques de código durante streaming | Render parcial raro | Render por fragmentos estables; el fence abierto se muestra como texto hasta cerrar |
 | Contexto local (8k) con tools + contexto RAG | Respuestas degradadas | Catálogo de tools compacto; en modo Docs priorizar contexto RAG |
 | Buscador sin clave con control anti-bot | `web_search` se queda sin resultados | Preparar el cliente + reintentos + respaldo automático (Wikipedia); la herramienta siempre responde |

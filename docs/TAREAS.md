@@ -44,8 +44,21 @@ Implementación por fases (orden acordado):
       binarios (si es un PDF o una imagen pide usar `download_url`). Los dos son
       de categoría `WEB`: piden permiso (apagado por defecto) igual que los
       de archivos.
-- [ ] **F5**: Math LaTeX en chat (JLaTeXMath, offline) + `latex_compile` → PDF
+- [x] **F5**: Math LaTeX en chat (JLaTeXMath, offline) + `latex_compile` → PDF
       (autodetecta TinyTeX/MiKTeX; fail-fast con guía si falta).
+      **Implementado (2026-10-20)**: F5a —
+      `frontend/app/ui/MathRender.kt` (JLaTeXMath 1.0.7, render a `BufferedImage`
+      en memoria, recoloreado al `onSurface` del tema) integrado en
+      `frontend/app/ui/Markdown.kt` como `MdNode.Math`: `$…$` inline con
+      `appendInlineContent` y `$$…$$` como bloque. El `$` de cierre no puede
+      ir seguido de dígito (`$5 … $10` es texto), el `$` sin cerrar queda como
+      texto (seguro con streaming) y el código en línea nunca es math. F5b —
+      `backend/rag/agent/tools/LatexTool.kt` (tool `latex_compile`, categoría
+      FILES): busca `pdflatex`/`xelatex` en el PATH, escribe el `.tex` en
+      outputs (con preámbulo estándar si el modelo manda un fragmento),
+      compila en un directorio temporal y devuelve el PDF y el `.tex` como
+      adjuntos. **Fail-fast**: sin motor instalado devuelve un error con la
+      guía (TeX Live / MiKTeX) en vez de un PDF vacío.
 - [ ] **F6**: `GradioSpaceGateway` — modelo remoto vía HF Spaces. **CONGELADA**
       (2026-10-19): decisión pendiente, el usuario la dejó incompleta. Ver §10
       del plan (alternativa recomendada: HF Inference Providers).

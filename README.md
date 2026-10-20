@@ -41,11 +41,15 @@ referencia de API. |
   código con resaltado**, copiar y "guardar como…" con la extensión real (`.py`, `.kt`,
   `.cpp`, `.glsl`…).
 - **Tool calling**: el modelo puede pedir herramientas a la app (hoy `get_time`,
-  `create_file`, `download_url`, `web_search` y `web_fetch`); funciona en modo nativo contra APIs
+  `create_file`, `download_url`, `web_search`, `web_fetch` y `latex_compile`); funciona en modo nativo contra APIs
   OpenAI-compatible y en modo protocolo-por-prompt contra el modelo local.
 - **Buscar en la web** sin clave de API: `web_search` (DuckDuckGo, con respaldo automático en
   Wikipedia) y `web_fetch` (trae la página y la devuelve como texto). Si la URL es un PDF o una
   imagen, la herramienta avisa que use `download_url` para dejarla como adjunto.
+- **Matemática y LaTeX**: las fórmulas `$…$` y `$$…$$` se **dibujan** en el chat (JLaTeXMath,
+  offline, sin TeX instalado), y la tool `latex_compile` convierte un documento LaTeX en **PDF**
+  (adjunto listo para abrir o guardar). Si no hay motor de TeX en el sistema, la herramienta
+  avisa con una guía de instalación en vez de fallar en silencio.
 - **Permisos por categoría**: están **apagados por defecto** y se conceden **por chat**
   (`/permitir-archivos`, `/permitir-web`, `/permisos`, `/revocar-*`). Sin permiso concedido, la
   herramienta pide confirmación con un diálogo ("Permitir siempre / Una vez / Cancelar") y los
@@ -117,7 +121,8 @@ Los chats (carpetas, mensajes, tarjetas de herramientas y adjuntos) se guardan a
 ~2.4 GB) — rápido y bueno en español; se descarga solo al primer arranque, con reanudación si se corta.
 
 **Requisitos**: JDK 21, Gradle, y `llama-server` de llama.cpp en el PATH (o indicar la ruta en
-`llm.llamaServerPath`).
+`llm.llamaServerPath`). Opcional: **TeX Live o MiKTeX** en el PATH, sólo para la tool
+`latex_compile` (la matemática del chat funciona sin él).
 
 ## Pantallas
 
@@ -155,9 +160,12 @@ En desarrollo todo (config, modelos, docs internas) vive en `<raíz>/app-home`.
       (`/permitir-archivos`, `/permisos`, `/revocar-*`).
 - [x] **F4 — web**: `web_search` (DuckDuckGo sin clave, con respaldo en Wikipedia) y `web_fetch`
       (página → texto legible), permisos `WEB` por chat (`/permitir-web`).
+- [x] **F5 — LaTeX**: las fórmulas `$…$` y `$$…$$` se dibujan en el chat (JLaTeXMath, offline) y
+      la tool `latex_compile` convierte un documento LaTeX en PDF (adjunto), con fail-fast y guía
+      de instalación si no hay motor de TeX.
 - [x] **Arquitectura modular**: un paquete por área en los tres módulos.
-- [ ] **F5–F7** (en curso, plan en `docs/PLAN-INTEGRACION.md`): LaTeX
-      (math + PDF), HF Spaces (Gradio) y MCP preparado.
+- [ ] **F6–F7** (en curso, plan en `docs/PLAN-INTEGRACION.md`): HF Spaces (Gradio, **congelada**) y
+      MCP preparado (contrato de conexión + registro con origen).
 - [ ] Manual de uso del FunshiEngine como fuente RAG.
 - [ ] Verificador determinista de citas (script post-generación).
 - [ ] Tests unitarios del `ChatViewModel` (cola, arranque, cancelación) y de integración de
