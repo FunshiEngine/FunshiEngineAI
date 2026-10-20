@@ -661,7 +661,11 @@ fun MessageBubble(
                             // Tarjetas de herramientas usadas en esta respuesta
                             // (F1: tool calling). Antes del texto del mensaje.
                             m.toolCalls.forEach { tc -> ToolCallCard(tc) }
-                            Text(m.text.ifEmpty { "…" })
+                            if (m.role == "assistant") {
+                                MarkdownText(text = m.text.ifEmpty { "…" })
+                            } else {
+                                Text(m.text.ifEmpty { "…" })
+                            }
                             if (m.sources.isNotEmpty()) {
                                 Spacer(Modifier.height(8.dp))
                                 Text("Fuentes:", fontSize = 11.sp)
