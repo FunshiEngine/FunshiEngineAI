@@ -18,21 +18,22 @@ fun interface McpConnector {
 }
 
 /**
- * Conector por defecto: todavía NO hay transporte MCP.
+ * Conector **sin transporte**: la conexión falla siempre.
  *
- * Los servidores se pueden declarar en la configuración, pero no se conectan:
- * la razón se muestra en el estado, así el usuario no cree que hay un
- * servidor conectado que no responde.
+ * Sirve para probar el manager sin ningún servidor de verdad, y para
+ * declarar un transporte sin inventar una conexión: el estado muestra el
+ * motivo, así el usuario no cree que hay un servidor conectado que no
+ * responde. El transporte real (stdio) está en [McpStdioConnector].
  */
 object PendingMcpConnector : McpConnector {
     override suspend fun connect(server: McpServerConfig): McpConnection = throw McpUnavailableException(
-        "El transporte MCP todavía no está implementado: falta el cliente oficial " +
-            "(SDK de Kotlin). El servidor '${server.displayName}' queda declarado pero no conectado.",
+        "El transporte MCP todavía no está implementado para '${server.displayName}': " +
+            "este conector no abre conexiones.",
     )
 }
 
 /** Error de transporte MCP: la conexión no se pudo abrir. */
-class McpUnavailableException(message: String) : Exception(message)
+open class McpUnavailableException(message: String) : Exception(message)
 
 /** Estado de un servidor MCP para mostrarlo en la UI. */
 data class McpServerStatus(

@@ -71,6 +71,9 @@ interface McpConnection {
     /** Nombre para mostrar en la UI. */
     val displayName: String
 
+    /** Versión de protocolo que negoció el servidor (vacía si no la informó). */
+    val protocolVersion: String get() = ""
+
     /** Lista las herramientas que el servidor expone ahora. */
     suspend fun listTools(): List<McpToolDescriptor>
 

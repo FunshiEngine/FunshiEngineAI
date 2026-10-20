@@ -1,5 +1,76 @@
 # Registro de Cambios - FunshiEngineAI
 
+## v0.12.0 (2026-10-20) — F8: cliente MCP real por stdio
+
+### ✨ Nuevas Características
+
+#### La app ahora habla MCP de verdad
+- **Transporte stdio implementado**: el servidor MCP declarado se lanza como
+  proceso hijo y se le habla **JSON-RPC 2.0** (`initialize` →
+  `notifications/initialized` → `tools/list` → `tools/call`). Sus
+  herramientas aparecen en el chat como `mcp__<servidor>__<herramienta>` y
+  piden permiso como las demás (`/permitir-mcp`).
+- **Cliente propio, sin SDK oficial**: el SDK publicado
+  (`io.modelcontextprotocol:kotlin-sdk-client`) exige Kotlin ≥2.2 y ktor
+  ≥3.2.3 (la última versión pide Kotlin 2.4 + ktor 3.5) y el proyecto está en
+  Kotlin 2.1.0 + ktor 3.0.3: adoptarlo sería subir el toolchain de todo el
+  proyecto. Como el núcleo del protocolo es chico y estable, se implementó a
+  mano **detrás del mismo seam** (`McpConnector`): si algún día se actualiza
+  el toolchain, el SDK entra por ahí y el resto de la app no se toca.
+
+#### Piezas nuevas
+- **`backend/rag/mcp/McpProtocol.kt`** — JSON-RPC 2.0 puro (construir y leer
+  mensajes). Testeable sin IO.
+- **`backend/rag/mcp/McpStdioClient.kt`** — `McpProcess` (abstracción del
+  proceso hijo), `JvmMcpProcess`, `StdioMcpConnection` (lector en segundo
+  plano, peticiones por id, timeout por request) y `McpStdioConnector`
+  (lanza el proceso y hace el handshake). `DefaultMcpConnector` elige el
+  transporte según la declaración del servidor.
+
+#### Detalles que importan
+- Los mensajes van **en una línea** (JSON compacto delimitado por `\n`), como
+  exige el protocolo. El parser **ignora el ruido** que algunos servidores
+  escriben en stdout y responde `-32601` a las peticiones que el servidor le
+  haga al cliente.
+- **stderr se drena en segundo plano**: si el servidor loguea mucho y nadie lo
+  lee, el proceso se bloquea al escribir. Las últimas líneas quedan para
+  diagnóstico.
+- **Timeout por petición** (`mcp.timeoutMs`, 30 s): al agotarse se avisa al
+  servidor con `notifications/cancelled` y la herramienta devuelve un error
+  controlado (el chat no se cuelga). La cancelación externa se propaga como
+  cancelación, no como error.
+- **El contenido binario** (imágenes, audio, recursos embebidos) se guarda
+  como adjunto del chat; el texto vuelve al modelo.
+- **En Windows** los `.cmd`/`.bat` se lanzan con `cmd.exe /c` (CreateProcess
+  sólo corre binarios) y la línea va entre comillas dobles extra para que las
+  rutas con espacios no se rompan.
+- El transporte **http** sigue sin implementarse: el estado lo dice
+  explícitamente, nunca "conectado".
+
+#### Ajustes y configuración
+- **Ajustes → Herramientas**: selector de transporte (stdio / http), timeout
+  de las peticiones MCP y el texto que explica qué funciona y qué no.
+- `mcp.timeoutMs` en la config (30 s por defecto).
+- Al cerrar la app se cierran los procesos de los servidores MCP: no quedan
+  colgados por debajo.
+
+### 🧪 Tests
+- **307 tests** en total (backend 238, frontend 37, llm-api 32) — +27.
+- `McpStdioClientTest` (19 casos): handshake, versión negociada, lista de
+  herramientas, llamada, contenido binario, `isError`, error del protocolo,
+  timeout, ruido en stdout, notificación del servidor, petición del servidor
+  al cliente y cierre.
+- `McpStdioProcessTest` (8 casos): el mismo protocolo contra un **proceso
+  real** (la misma JVM del test hace de servidor MCP), más el manager con el
+  conector real y el estado de un servidor que no se puede lanzar.
+
+### 📖 Documentación
+- `docs/PLAN-INTEGRACION.md` §9 reescrito con el cliente por stdio y el
+  porqué de no usar el SDK oficial; tabla de fases con F8 en verde.
+- `docs/ARCHITECTURE.md`: sección MCP con el diseño del cliente y sus
+  detalles (stderr, timeout, Windows, seam).
+- `README.md`: MCP como capacidad real, config de ejemplo y roadmap.
+
 ## v0.11.0 (2026-10-20) — F9: verificador determinista de citas
 
 ### ✨ Nuevas Características

@@ -63,7 +63,7 @@ en el request `tools[]`; la dependencia va en un solo sentido.
 | `rag.retrieval` | `Chunker`, `Bm25Index`, `KnowledgeBase`, `Sources`, modelos de documento |
 | `rag.engine` | `RagEngine`: arma el prompt (system + contexto + historial) y responde; `CitationVerifier` (F9): comprueba las citas de la respuesta contra sus fuentes |
 | `rag.agent` | Tool calling: `Tool`, `ToolResult`, `ToolContext`, `ToolRegistry`, `AgentLoop`, `PromptToolParser`, `ToolCallSanitizer`, `ToolPermissions`, `tools/GetTimeTool`, `tools/FileTools`, `tools/WebTools`, `tools/LatexTool` |
-| `rag.mcp` | MCP (F7): `McpConnection` (contrato), `McpToolAdapter`, `McpManager`, `McpConfig` |
+| `rag.mcp` | MCP (F7/F8): `McpConnection` (contrato), `McpToolAdapter`, `McpManager`, `McpConfig`, `McpProtocol` (JSON-RPC), `McpStdioClient` (cliente por stdio) |
 
 ### `frontend` — UI
 
@@ -380,13 +380,13 @@ intentar.
 
 ---
 
-## MCP: herramientas de servidores externos (F7)
+## MCP: herramientas de servidores externos (F7 + F8)
 
 La app puede hablar con servidores MCP (Model Context Protocol) para usar
-herramientas que no están implementadas en la app. **En esta ronda está
-preparado el contrato, no el transporte**: falta el SDK oficial de Kotlin, así
-que los servidores se declaran pero no se conectan, y la app lo dice con
-todas las letras.
+herramientas que no están implementadas en la app. El transporte implementado
+es **stdio** (F8): el servidor se lanza como proceso hijo y se le habla
+JSON-RPC 2.0. El transporte http queda pendiente y la app lo dice con todas
+las letras.
 
 ### El contrato (`rag.mcp`)
 
@@ -394,6 +394,7 @@ todas las letras.
 interface McpConnection {
     val serverId: String
     val displayName: String
+    val protocolVersion: String get() = ""
     suspend fun listTools(): List<McpToolDescriptor>
     suspend fun callTool(name: String, args: JsonObject): McpToolResult
     suspend fun close()
@@ -423,15 +424,44 @@ el origen**:
 ```
 McpManager.refresh()
     -> por cada servidor declarado (y habilitado):
-         connector.connect(server)   <-- EL seam: aca va el SDK oficial
+         connector.connect(server)   <-- EL seam (stdio: DefaultMcpConnector)
          connection.listTools()     -> adaptadores
     -> estado por servidor (conectado / no conectado / por qué)
 ```
 
-`PendingMcpConnector` es el conector por defecto: responde "falta el cliente
-oficial". Un servidor caído no impide que los demás funcionen. Cuando llegue
-el SDK, **sólo cambia el conector**: el `ChatViewModel` es el único lugar que
-lo crea.
+`DefaultMcpConnector` elige el transporte según la declaración. Un servidor
+caído no impide que los demás funcionen.
+
+### El cliente por stdio (`McpStdioClient.kt`)
+
+| Pieza | Qué hace |
+|-------|----------|
+| `McpProtocol` | JSON-RPC 2.0 **puro**: construir y leer mensajes (testeable sin IO) |
+| `McpProcess` / `JvmMcpProcess` | El proceso hijo: entrada, salida y stderr |
+| `StdioMcpConnection` | Lector en segundo plano, peticiones por id, timeout por request |
+| `McpStdioConnector` | Lanza el proceso, hace el handshake y devuelve la conexión |
+
+El ciclo es el del protocolo: `initialize` → `notifications/initialized` →
+`tools/list` → `tools/call`. Los mensajes van **en una línea** (JSON
+compacto delimitado por `\n`); lo que no sea un mensaje válido se ignora (algunos
+servidores escriben logs en stdout) y las peticiones del servidor al cliente se
+responden con `-32601`.
+
+Detalles que importan:
+
+- **stderr se drena en segundo plano**: si el servidor loguea mucho y nadie lo
+  lee, el proceso se bloquea al escribir.
+- **Timeout por petición** (`mcp.timeoutMs`, 30 s): al agotarse se avisa al
+  servidor con `notifications/cancelled` y la herramienta devuelve un error
+  controlado. La cancelación externa se propaga como cancelación.
+- **En Windows** los `.cmd`/`.bat` se lanzan con `cmd.exe /c` (CreateProcess
+  sólo corre binarios) y la línea va entre comillas dobles extra para que las
+  rutas con espacios no se rompan.
+- **Por qué no el SDK oficial**: `io.modelcontextprotocol:kotlin-sdk-client`
+  exige Kotlin ≥2.2 y ktor ≥3.2.3 (la última, Kotlin 2.4 + ktor 3.5) y el
+  proyecto está en Kotlin 2.1.0 + ktor 3.0.3. Adoptarlo sería subir el
+  toolchain de todo el proyecto. Si algún día se actualiza, el SDK entra por
+  `McpConnector` y el resto de la app no se toca.
 
 ### Dónde se ve
 
@@ -556,8 +586,10 @@ Archivo: `<app-home>/config/app-config.json`
   comporta exactamente igual que antes.
 - Las secciones `tools`, `outputs` y `latex` **no son decorativas**: los lee el código (topes de
   tamaño, motor de LaTeX, timeout por herramienta) y se editan en **Ajustes → Herramientas**.
-- La sección `mcp` declara los servidores MCP. El transporte todavía no está implementado: se
-  declaran y quedan sin conectar (el estado lo muestra `/mcp`).
+- La sección `mcp` declara los servidores MCP (id, nombre, transporte, comando/args/env o URL,
+  habilitado) y el timeout de las peticiones (`mcp.timeoutMs`). Con transporte **stdio** el
+  servidor se lanza como proceso y se le habla MCP; con `http` el estado lo dice: todavía no está
+  implementado (el estado se muestra con `/mcp`).
 
 El árbol de chats vive aparte, en `<app-home>/config/chats.json` (esquema recursivo
 `StoredNode`: carpetas con hijos y chats con mensajes; las tarjetas de herramientas se guardan en

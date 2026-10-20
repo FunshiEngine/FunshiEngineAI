@@ -213,6 +213,7 @@ categoría y **por chat**, apagado por defecto):
 | `download_url` | FILES | Baja un archivo a la carpeta del chat (http/https, 50 MB máx.). |
 | `create_file` | FILES | Escribe un archivo en la carpeta del chat (5 MB máx.). |
 | `latex_compile` | FILES | Compila un `.tex` a PDF (necesita `pdflatex` o `xelatex`). |
+| `mcp__<servidor>__<herramienta>` | MCP | Herramientas de un servidor MCP externo (transporte stdio). |
 | `get_time` | — | La hora actual (sin permiso). |
 
 Para usar las que necesitan permiso, en el chat:
@@ -265,7 +266,8 @@ Lo que afecta al RAG:
 | `systemPromptFile` | Ruta del prompt. **Se relee en cada pregunta**: lo editás y aplica en la siguiente. |
 
 Secciones vecinas (no son RAG pero conviven): `tools` (interruptor y timeout), `outputs`
-(carpetas y topes), `latex` (motor y timeout) y `mcp` (servidores declarados).
+(carpetas y topes), `latex` (motor y timeout) y `mcp` (servidores declarados y timeout
+de las peticiones).
 
 ---
 

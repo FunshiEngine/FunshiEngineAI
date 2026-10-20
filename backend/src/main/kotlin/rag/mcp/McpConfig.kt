@@ -5,14 +5,16 @@ import kotlinx.serialization.Serializable
 /**
  * Configuración de los servidores MCP (sección `mcp` de la config v4).
  *
- * Los servidores quedan DECLARADOS aunque todavía no haya transporte: cuando
- * se implemente el cliente (SDK oficial), esta configuración es la que va a
- * usar, sin tocar el resto de la app.
+ * El transporte implementado es **stdio** (F8): el servidor se lanza como
+ * proceso hijo y se le habla JSON-RPC. Los demás transportes quedan
+ * declarados, pero su estado dice que no están implementados.
  */
 @Serializable
 data class McpConfig(
     /** Servidores MCP declarados por el usuario. */
     val servers: List<McpServerConfig> = emptyList(),
+    /** Timeout de cada petición MCP (handshake, tools/list, tools/call). */
+    val timeoutMs: Long = 30_000,
 )
 
 /**

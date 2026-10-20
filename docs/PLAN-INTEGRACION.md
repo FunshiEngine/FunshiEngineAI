@@ -22,8 +22,9 @@ Objetivo: convertir el chat en un **asistente con herramientas**:
 4. **Navegación web**: `web_search` (DuckDuckGo, sin clave) + `web_fetch` (lectura
    de páginas).
 5. **LaTeX**: math inline/display + compilación de documentos LaTeX → PDF.
-6. **MCP**: preparar la arquitectura (contratos + adaptador) para ensamblar el
-   cliente MCP cuando haya servidores concretos.
+6. **MCP**: hablar MCP de verdad por **stdio** (JSON-RPC 2.0) detrás del seam
+   `McpConnector`, con cliente propio (el SDK oficial exige subir el
+   toolchain del proyecto).
 7. **Permisos**: confirmación manual + comandos `/permitir-*` por categoría
    asociados al chat activo.
 
@@ -39,7 +40,7 @@ Objetivo: convertir el chat en un **asistente con herramientas**:
 | Modelo remoto | **HF: pendiente de decisión** (F6 congelada; ver `docs/PLAN-INTEGRACION.md` §11). |
 | LaTeX | **Math en chat + documentos LaTeX → PDF** (requiere TinyTeX/MiKTeX externo; la app lo autodetecta y ofrece guía de instalación). |
 | Formatos | Extensiones de archivo reales por lenguaje; exportar bloque/mensaje como archivo con su extensión. |
-| MCP | Sólo **arquitectura preparada** ahora (contrato + adaptador + config); ensamblaje del SDK cuando existan servidores a conectar. |
+| MCP | **Cliente propio por stdio** (JSON-RPC 2.0) detrás del seam `McpConnector`: el SDK oficial exige Kotlin ≥2.2 + ktor ≥3.2 y el proyecto está en Kotlin 2.1 + ktor 3.0. El transporte http queda pendiente. |
 | Orden | F1 → F7 (ver §8). |
 
 ---
@@ -318,13 +319,14 @@ v4 (`configVersion: 4`) llega en F7.
 
 ---
 
-## 9. Sección G — MCP (arquitectura preparada)
+## 9. Sección G — MCP (arquitectura + cliente por stdio)
 
 **Estado: IMPLEMENTADO (F7, 2026-10-20)** — contrato, adaptador, registro con
-orígenes, configuración y pantalla. **El transporte (cliente MCP) NO está
-implementado**: falta el SDK oficial de Kotlin.
+orígenes, configuración y pantalla.
+**Estado: IMPLEMENTADO (F8, 2026-10-20)** — transporte real por **stdio**
+(JSON-RPC 2.0 propio, sin SDK oficial).
 
-### 9.1 El contrato (sin SDK)
+### 9.1 El contrato (independiente del SDK)
 
 `backend/rag/mcp/McpToolAdapter.kt` define el seam:
 
@@ -332,6 +334,7 @@ implementado**: falta el SDK oficial de Kotlin.
 interface McpConnection {
     val serverId: String
     val displayName: String
+    val protocolVersion: String get() = ""
     suspend fun listTools(): List<McpToolDescriptor>
     suspend fun callTool(name: String, args: JsonObject): McpToolResult
     suspend fun close()
@@ -365,22 +368,61 @@ transporte), arma los adaptadores y expone el estado de cada servidor
 (conectado / no conectado / por qué). Un servidor que falla no impide que los
 demás funcionen.
 
-`PendingMcpConnector` es el conector por defecto: **todavía no hay
-transporte**, así que responde con un error claro ("falta el cliente
-oficial"). El estado de cada servidor lo muestra `/mcp` y la pantalla
-**Ajustes → Herramientas**: el usuario nunca ve un servidor "conectado" que no
-responde.
+`DefaultMcpConnector` elige el transporte según la declaración del servidor.
+El estado de cada servidor lo muestra `/mcp` y la pantalla **Ajustes →
+Herramientas**: el usuario nunca ve un servidor "conectado" que no responde.
 
-### 9.4 Qué falta para hablar MCP de verdad
+### 9.4 El cliente por stdio (F8)
 
-1. Agregar el SDK oficial (`io.modelcontextprotocol:kotlin-sdk`).
-2. Implementar `McpConnector` sobre stdio (proceso local) y/o HTTP.
-3. Cambiar el conector en un solo lugar (el `ChatViewModel`): el resto de la
-   app no se toca.
+**Por qué propio y no el SDK oficial**: el SDK publicado
+(`io.modelcontextprotocol:kotlin-sdk-client`) exige Kotlin ≥2.2 y ktor ≥3.2.3
+(la última versión pide Kotlin 2.4 y ktor 3.5). El proyecto está en Kotlin
+2.1.0 con ktor 3.0.3: adoptarlo sería subir el toolchain de todo el proyecto
+(Compose Desktop incluido) con riesgo de regresiones. El núcleo del protocolo
+es chico y estable, así que se implementó a mano **detrás del mismo seam**: si
+algún día se actualiza el toolchain, el SDK entra por `McpConnector` y el
+resto de la app no se toca.
+
+| Pieza | Dónde | Qué hace |
+|-------|-------|----------|
+| Protocolo | `rag/mcp/McpProtocol.kt` | JSON-RPC 2.0 puro: construir y leer mensajes (testeable sin IO). |
+| Proceso | `rag/mcp/McpStdioClient.kt` (`McpProcess`) | Abstracción del proceso hijo; la implementación real es `JvmMcpProcess`. |
+| Conexión | `rag/mcp/McpStdioClient.kt` (`StdioMcpConnection`) | Lector en segundo plano, peticiones por id, timeout por request. |
+| Conector | `rag/mcp/McpStdioClient.kt` (`McpStdioConnector`) | Lanza el proceso, hace el handshake y devuelve la conexión. |
+
+Lo que habla el cliente:
+
+1. `initialize` (con `protocolVersion`, capabilities y `clientInfo`) y, si el
+   servidor acepta, `notifications/initialized`.
+2. `tools/list` para descubrir las herramientas.
+3. `tools/call` para invocarlas.
+
+Detalles que importan:
+
+- **Los mensajes van en una línea**: JSON compacto, delimitado por `\n`, como
+  exige el protocolo. El parser ignora lo que no sea un mensaje válido (algunos
+  servidores escriben logs en stdout) y responde `-32601` a las peticiones que
+  el servidor le haga al cliente (sampling, roots).
+- **stderr se drena en segundo plano**: si el servidor loguea mucho y nadie lo
+  lee, el proceso se bloquea al escribir. Las últimas líneas quedan para
+  diagnóstico.
+- **Timeout por petición** (`mcp.timeoutMs`, 30 s por defecto): al agotarse se
+  avisa al servidor con `notifications/cancelled` y la herramienta devuelve un
+  error controlado (no se cuelga el chat). La cancelación externa se propaga
+  como cancelación, no como error.
+- **El contenido binario** (imágenes, audio, recursos) se guarda como adjunto
+  del chat; el texto vuelve al modelo.
+- **En Windows** un `.cmd`/`.bat` no se puede ejecutar directo: se lanza con
+  `cmd.exe /c` y la línea va entre comillas dobles extra para que las rutas
+  con espacios no se rompan.
+
+El transporte **http** sigue sin implementarse: el estado lo dice explícitamente
+("el transporte 'http' todavía no está implementado: sólo stdio"), nunca
+"conectado".
 
 Los servidores se **declaran** en la sección `mcp` de la config (id, nombre,
-transporte, comando/args/env o URL, habilitado). Esa configuración es la que
-va a usar el cliente cuando llegue.
+transporte, comando/args/env o URL, habilitado) y el timeout de las peticiones
+en `mcp.timeoutMs`.
 
 ---
 
@@ -493,6 +535,8 @@ backend/
   rag/mcp/McpToolAdapter.kt         ✅ contrato McpConnection + adaptador (F7)
   rag/mcp/McpManager.kt             ✅ manager de servidores + estado (F7)
   rag/mcp/McpConfig.kt              ✅ sección `mcp` de la config (F7)
+  rag/mcp/McpProtocol.kt            ✅ JSON-RPC 2.0 de MCP, puro (F8)
+  rag/mcp/McpStdioClient.kt         ✅ cliente MCP por stdio + conector (F8)
   rag/config/ToolsConfig.kt         ✅ secciones tools/outputs/latex (F7)
   rag/engine/CitationVerifier.kt    ✅ verificación de citas post-generación (F9)
   docs/MANUAL-RAG.md                ✅ manual de uso como fuente RAG
@@ -532,9 +576,9 @@ constantes del código, así que una instalación migrada se comporta igual.
 | **F5** | Math con JLaTeXMath + `latex_compile` → PDF (autodetección TinyTeX/MiKTeX) | F2, F3 | ✅ 2026-10-20 |
 | **F6** | `GradioSpaceGateway` para HF Spaces | **CONGELADA** — decisión pendiente (ver §11) | — |
 | **F7** | Contrato MCP + registro con orígenes + config v4 + pantalla de permisos + documentación | F1–F4 | ✅ 2026-10-20 |
-| **F8** | Cliente MCP real (SDK oficial) sobre stdio/HTTP | F7 | Pendiente |
+| **F8** | Cliente MCP real por stdio (JSON-RPC propio, sin SDK oficial) | F7 | ✅ 2026-10-20 |
 | **F9** | Verificador determinista de citas (post-generación) + distintivo en el chat | F1 | ✅ 2026-10-20 |
-| **T** | Infraestructura de tests (JUnit 5) + 280 tests deterministas | — | ✅ 2026-10-20 |
+| **T** | Infraestructura de tests (JUnit 5) + 307 tests deterministas | — | ✅ 2026-10-20 |
 
 F2 es independiente de F1 y puede hacerse en paralelo.
 
@@ -550,6 +594,9 @@ F2 es independiente de F1 y puede hacerse en paralelo.
 | Bloques de código durante streaming | Render parcial raro | Render por fragmentos estables; el fence abierto se muestra como texto hasta cerrar |
 | Contexto local (8k) con tools + contexto RAG | Respuestas degradadas | Catálogo de tools compacto; en modo Docs priorizar contexto RAG |
 | Buscador sin clave con control anti-bot | `web_search` se queda sin resultados | Preparar el cliente + reintentos + respaldo automático (Wikipedia); la herramienta siempre responde |
+| Cliente MCP propio (sin SDK oficial): el protocolo puede cambiar | Un servidor nuevo puede usar funciones que el cliente no implementa | El cliente es **aditivo** (lo que no entiende lo ignora); el handshake es estable desde 2024-11-05; si el SDK oficial entra por el seam `McpConnector`, el resto de la app no se toca |
+| El servidor MCP escribe logs en stdout | Se rompe el parseo del protocolo | El parser ignora las líneas que no son mensajes válidos; stderr se drena aparte; timeout por petición para que un servidor colgado no cuelgue el chat |
+| Un proceso MCP queda colgado al cerrar la app | Procesos zombis | `close()` cierra la entrada, espera y después mata; al cerrar la app se cierran todas las conexiones |
 
 ---
 

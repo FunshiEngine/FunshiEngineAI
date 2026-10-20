@@ -10,8 +10,9 @@ y se mueve a `docs/CHANGES.md` en el próximo registro de versión.
 ### 0. Integración por fases: herramientas, formatos, web, archivos, LaTeX, HF Spaces, MCP
 
 **Estado:** PLANIFICADO (2026-10-19) — diseño completo en `docs/PLAN-INTEGRACION.md`
-(decisiones cerradas con el usuario; ver §2 de ese documento). **F1, F2 y F3
-IMPLEMENTADOS (2026-10-20), compilados y verificados.**
+(decisiones cerradas con el usuario; ver §2 de ese documento). **F1, F2, F3, F4,
+F5, F7, F8 y F9 IMPLEMENTADOS (2026-10-20), compilados y verificados. F6
+(congelada) y el transporte http de MCP pendientes.**
 
 Implementación por fases (orden acordado):
 
@@ -79,6 +80,33 @@ Implementación por fases (orden acordado):
       mismos valores que las constantes de antes) y pantalla **Ajustes →
       Herramientas** para editarlas. Los permisos MCP ya funcionaban
       (`/permitir-mcp`, `/revocar-mcp`, `/permisos`).
+- [x] **F8**: Cliente MCP **real por stdio** (JSON-RPC 2.0 propio, detrás del
+      seam `McpConnector`, sin SDK oficial).
+      **Implementado (2026-10-20)**:
+      `backend/rag/mcp/McpProtocol.kt` (JSON-RPC puro: construir y leer
+      mensajes) y `backend/rag/mcp/McpStdioClient.kt` (`McpProcess`/`JvmMcpProcess`,
+      `StdioMcpConnection`, `McpStdioConnector`, `DefaultMcpConnector`).
+      Ciclo: `initialize` → `notifications/initialized` → `tools/list` →
+      `tools/call`. Los mensajes van en una línea (JSON compacto delimitado por
+      `\n`); el parser ignora el ruido en stdout y responde `-32601` a las
+      peticiones del servidor al cliente. stderr se drena en segundo plano
+      (si no, el proceso se bloquea al loguear), timeout por petición
+      (`mcp.timeoutMs`, con `notifications/cancelled`) y en Windows los
+      `.cmd`/`.bat` se lanzan con `cmd.exe /c`. El transporte **http** sigue
+      sin implementarse y la app lo dice. **Por qué no el SDK oficial**:
+      `io.modelcontextprotocol:kotlin-sdk-client` exige Kotlin ≥2.2 y ktor
+      ≥3.2.3 (la última, Kotlin 2.4 + ktor 3.5) y el proyecto está en Kotlin
+      2.1.0 + ktor 3.0.3: adoptarlo sería subir el toolchain de todo el
+      proyecto. Tests: `McpStdioClientTest` (doble en memoria) y
+      `McpStdioProcessTest` (proceso real).
+- [x] **F9**: Verificador determinista de citas (post-generación) + distintivo
+      en el chat. **Implementado (2026-10-20)**:
+      `backend/rag/engine/CitationVerifier.kt` (puro: literal, sin detalles
+      inventados, paráfrasis), `StoredCitation` persistida y
+      `CitationBadge` en la burbuja del mensaje.
+- [x] **Infraestructura de tests**: JUnit 5 en los tres módulos,
+      `rag.test.runTest { }` como helper y 307 tests deterministas
+      (reglas en `docs/TESTING.md`).
 
 ---
 

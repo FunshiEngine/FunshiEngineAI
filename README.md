@@ -65,10 +65,12 @@ referencia de API. |
   concedido, la herramienta pide confirmación con un diálogo ("Permitir siempre / Una vez /
   Cancelar") y los archivos que produce llegan al chat como **adjuntos** que se pueden abrir o
   guardar.
-- **MCP preparado**: el contrato del protocolo (conexión, adaptador, registro con origen) ya está
-  escrito y probado, y los servidores se declaran en **Ajustes → Herramientas**. Falta el cliente
-  MCP en sí (SDK oficial): por ahora los servidores quedan declarados y sin conectar, y `/mcp`
-  muestra el estado con el motivo.
+- **MCP de verdad por stdio**: el servidor se lanza como proceso hijo y se le habla JSON-RPC 2.0
+  (`initialize` → `tools/list` → `tools/call`); sus herramientas aparecen en el chat como
+  `mcp__<servidor>__<herramienta>` y piden permiso como las demás (`/permitir-mcp`). Los servidores
+  se declaran en **Ajustes → Herramientas** y `/mcp` muestra el estado con el motivo de cada
+  fallo. El cliente es propio (el SDK oficial exige subir el toolchain del proyecto a Kotlin 2.4);
+  el transporte **http** todavía no está implementado y la app lo dice.
 
 ## Regla central: no inventar sin referencia
 
@@ -147,7 +149,8 @@ Todo se configura en `app-home/config/app-config.json` (se crea solo en el prime
     "maxDocumentKb": 1024            // tope del documento
   },
   "mcp": {
-    "servers": [                     // servidores MCP declarados (el cliente todavía no está)
+    "timeoutMs": 30000,               // timeout de las peticiones MCP
+    "servers": [                     // servidores MCP declarados (transporte stdio)
       { "id": "docs", "name": "Documentación", "transport": "stdio",
         "command": "mi-servidor-mcp", "args": [], "env": {}, "enabled": true }
     ]
@@ -212,13 +215,15 @@ En desarrollo todo (config, modelos, docs internas) vive en `<raíz>/app-home`.
       de instalación si no hay motor de TeX.
 - [x] **F7 — MCP preparado**: contrato (`McpConnection`), adaptador, registro con origen
       `LOCAL|MCP`, configuración v4 (`tools`, `outputs`, `latex`, `mcp`) y pantalla **Ajustes →
-      Herramientas**. Falta el cliente MCP en sí (SDK oficial).
+      Herramientas**.
+- [x] **F8 — cliente MCP real (stdio)**: JSON-RPC 2.0 propio detrás del seam `McpConnector`
+      (sin SDK oficial: pediría Kotlin 2.4 + ktor 3.5 para todo el proyecto). El transporte http
+      queda pendiente.
 - [x] **Arquitectura modular**: un paquete por área en los tres módulos.
-- [x] **Tests**: 280 tests deterministas con JUnit 5 (`./gradlew test`), reglas en
+- [x] **Tests**: 307 tests deterministas con JUnit 5 (`./gradlew test`), reglas en
       `docs/TESTING.md`.
 - [x] **Verificador determinista de citas**: cada `[n]` de la respuesta se comprueba contra su
       fuente; la respuesta muestra si está respaldada.
 - [x] **Manual de uso como fuente RAG**: cómo cargar la documentación, cómo se recupera, cómo
       se citan las fuentes y cómo leer el distintivo de citas (`docs/MANUAL-RAG.md`).
 - [ ] **F6 — HF Spaces (Gradio)**: **congelada**, decisión pendiente (ver §11 del plan).
-- [ ] **F8 — cliente MCP real** (SDK oficial) sobre stdio/HTTP.

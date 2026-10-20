@@ -65,6 +65,14 @@ existe dentro del build de cada módulo.
   categoría MCP, binarios como adjuntos y errores que vuelven como error.
 - `McpManagerTest` — el manager de servidores, con un conector falso (no
   hace falta ningún servidor MCP de verdad).
+- `McpStdioClientTest` — el cliente MCP por stdio contra un servidor **falso
+  en memoria**: handshake, versión negociada, lista de herramientas, llamada,
+  contenido binario, `isError`, error del protocolo, timeout, ruido en stdout,
+  notificación del servidor, petición del servidor al cliente y cierre.
+- `McpStdioProcessTest` — el mismo protocolo contra un **proceso real**: la
+  misma JVM del test hace de servidor MCP (`FakeMcpServer`), así que se
+  prueban el pipe, el handshake, el cierre del proceso y el log a stderr. Sin
+  red y sin instalar nada.
 - `ConfigMigrationTest` — la migración v3 → v4 tiene que ser invisible: una
   config vieja se comporta exactamente igual que antes.
 - `ChunkerTest` / `Bm25IndexTest` / `KnowledgeBaseTest` — el troceado, el
@@ -87,4 +95,4 @@ existe dentro del build de cada módulo.
 
 ## Cobertura actual
 
-280 tests (`llm-api` 32, `backend` 211, `frontend` 37).
+307 tests (`llm-api` 32, `backend` 238, `frontend` 37).

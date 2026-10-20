@@ -37,6 +37,7 @@ import app.chat.setLatexEngine
 import app.chat.setLatexTimeoutSeconds
 import app.chat.setMaxDownloadMb
 import app.chat.setMaxFileMb
+import app.chat.setMcpTimeoutSeconds
 import app.chat.setOutputsDir
 import app.chat.setToolTimeoutSeconds
 import app.chat.setToolsEnabled
@@ -145,10 +146,18 @@ private fun McpServers(vm: ChatViewModel) {
     val servidores = vm.config.mcp.servers
     Text("Servidores MCP", style = MaterialTheme.typography.titleSmall)
     Text(
-        "Se declaran acá; el transporte MCP todavía no está implementado, así que quedan " +
-            "declarados pero no conectados (el estado se ve con `/mcp`).",
+        "Transporte stdio: el servidor se lanza como proceso y se le habla MCP (JSON-RPC). " +
+            "El transporte http todavía no está implementado. El estado de cada servidor " +
+            "se ve con `/mcp`.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(8.dp))
+    NumberField(
+        vm = vm,
+        label = "Timeout de las peticiones MCP (segundos)",
+        value = vm.config.mcp.timeoutMs / 1000,
+        onValue = { vm.setMcpTimeoutSeconds(it) },
     )
     Spacer(Modifier.height(8.dp))
 
@@ -171,6 +180,7 @@ private fun McpServerRow(vm: ChatViewModel, index: Int, server: McpServerConfig)
     var nombre by remember(server) { mutableStateOf(server.name) }
     var comando by remember(server) { mutableStateOf(server.command) }
     var url by remember(server) { mutableStateOf(server.url) }
+    var transporte by remember(server) { mutableStateOf(server.transport) }
     var habilitado by remember(server) { mutableStateOf(server.enabled) }
 
     Card(
@@ -220,6 +230,15 @@ private fun McpServerRow(vm: ChatViewModel, index: Int, server: McpServerConfig)
                 )
             }
             Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { transporte = "stdio" }) {
+                    Text(if (transporte.equals("stdio", true)) "stdio (activo)" else "stdio")
+                }
+                TextButton(onClick = { transporte = "http" }) {
+                    Text(if (transporte.equals("http", true)) "http (activo)" else "http")
+                }
+            }
+            Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = comando,
                 onValueChange = { comando = it },
@@ -243,6 +262,7 @@ private fun McpServerRow(vm: ChatViewModel, index: Int, server: McpServerConfig)
                         name = nombre.trim(),
                         command = comando.trim(),
                         url = url.trim(),
+                        transport = transporte.trim().ifBlank { "stdio" },
                         enabled = habilitado,
                     )
                 }

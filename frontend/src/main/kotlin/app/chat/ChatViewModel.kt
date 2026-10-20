@@ -39,8 +39,8 @@ import rag.config.AppConfig
 import rag.config.AppPaths
 import rag.config.ColorProfile
 import rag.engine.RagEngine
+import rag.mcp.DefaultMcpConnector
 import rag.mcp.McpManager
-import rag.mcp.PendingMcpConnector
 import rag.retrieval.KnowledgeBase
 import rag.store.ChatStore
 import rag.store.StoredMessage
@@ -77,8 +77,8 @@ class ChatViewModel {
      * de tamaño, el motor de LaTeX y el interruptor general salen de la config.
      */
     internal val tools = ToolRegistry()
-    /** Servidores MCP (F7): estado y herramientas descubiertas. */
-    internal var mcp = McpManager(PendingMcpConnector, config.mcp.servers)
+    /** Servidores MCP (F7/F8): estado y herramientas descubiertas. */
+    internal var mcp = McpManager(DefaultMcpConnector(config.mcp.timeoutMs), config.mcp.servers)
     internal var chatJob: Job? = null
     /** Cola de mensajes pendientes mientras no hay engine listo. */
     internal val pendingMessages = mutableListOf<Pair<String, List<ChatMessage>>>()
@@ -483,6 +483,9 @@ class ChatViewModel {
     fun shutdown() {
         scope.cancel()
         llmService.stop()
+        // Los procesos de los servidores MCP se cierran: si no, quedan
+        // colgados por debajo de la app.
+        runBlocking(Dispatchers.IO) { mcp.close() }
     }
 
     companion object {

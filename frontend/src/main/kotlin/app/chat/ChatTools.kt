@@ -9,12 +9,12 @@ import rag.agent.tools.GetTimeTool
 import rag.agent.tools.LatexCompileTool
 import rag.agent.tools.WebFetchTool
 import rag.agent.tools.WebSearchTool
+import rag.mcp.DefaultMcpConnector
 import rag.mcp.McpManager
 import rag.mcp.McpServerConfig
-import rag.mcp.PendingMcpConnector
 
 /**
- * Herramientas del chat (F1–F7).
+ * Herramientas del chat (F1–F9).
  *
  * El registro se arma a partir de la configuración, así que los topes, el
  * motor de LaTeX y el interruptor general salen de `app-config.json` y no de
@@ -49,13 +49,13 @@ internal fun ChatViewModel.rebuildLocalTools() {
 /**
  * Conecta con los servidores MCP declarados y registra sus herramientas.
  *
- * El transporte todavía no está implementado ([PendingMcpConnector]): los
- * servidores quedan declarados y su estado dice por qué no conectan. Cuando
- * haya cliente MCP, sólo cambia el conector: esto no se toca.
+ * El transporte implementado es **stdio** (F8): el servidor se lanza como
+ * proceso hijo y se le habla JSON-RPC. Un servidor que falla no impide que
+ * los demás funcionen: su error queda en el estado (`/mcp`).
  */
 internal suspend fun ChatViewModel.refreshMcpTools() {
     mcp.close()
-    mcp = McpManager(PendingMcpConnector, config.mcp.servers)
+    mcp = McpManager(DefaultMcpConnector(config.mcp.timeoutMs), config.mcp.servers)
     val encontradas = mcp.refresh()
     tools.replaceOrigin(ToolOrigin.MCP, encontradas)
 }
@@ -130,6 +130,13 @@ internal fun ChatViewModel.setLatexEngine(engine: String) {
 internal fun ChatViewModel.setLatexTimeoutSeconds(seconds: Long) {
     config = config.copy(latex = config.latex.copy(timeoutMs = seconds.coerceAtLeast(1) * 1000)).save()
     rebuildLocalTools()
+}
+
+/** Timeout de las peticiones MCP, en segundos. */
+internal fun ChatViewModel.setMcpTimeoutSeconds(seconds: Long) {
+    config = config.copy(mcp = config.mcp.copy(timeoutMs = seconds.coerceAtLeast(1) * 1000)).save()
+    // El timeout vive en el conector: hay que reconectar para que aplique.
+    scope.launch { refreshMcpTools() }
 }
 
 /** Agrega un servidor MCP vacío al final de la lista. */
