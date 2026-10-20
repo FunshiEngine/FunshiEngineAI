@@ -40,9 +40,13 @@ referencia de API. |
 - **Renderizar** la respuesta como markdown: títulos, listas, tablas, citas y **bloques de
   código con resaltado**, copiar y "guardar como…" con la extensión real (`.py`, `.kt`,
   `.cpp`, `.glsl`…).
-- **Tool calling**: el modelo puede pedir herramientas a la app (hoy, `get_time`); funciona en
-  modo nativo contra APIs OpenAI-compatible y en modo protocolo-por-prompt contra el modelo
-  local.
+- **Tool calling**: el modelo puede pedir herramientas a la app (hoy `get_time`,
+  `create_file` y `download_url`); funciona en modo nativo contra APIs OpenAI-compatible y en modo
+  protocolo-por-prompt contra el modelo local.
+- **Permisos por categoría**: están **apagados por defecto** y se conceden **por chat**
+  (`/permitir-archivos`, `/permitir-web`, `/permisos`, `/revocar-*`). Sin permiso concedido, la
+  herramienta pide confirmación con un diálogo ("Permitir siempre / Una vez / Cancelar") y los
+  archivos que produce llegan al chat como **adjuntos** que se pueden abrir o guardar.
 
 ## Regla central: no inventar sin referencia
 
@@ -101,8 +105,9 @@ Todo se configura en `app-home/config/app-config.json` (se crea solo en el prime
 }
 ```
 
-Los chats (carpetas, mensajes y tarjetas de herramientas) se guardan aparte, en
-`app-home/config/chats.json`.
+Los chats (carpetas, mensajes, tarjetas de herramientas y adjuntos) se guardan aparte, en
+`app-home/config/chats.json`. Los archivos que crea o descarga el modelo van a
+`app-home/outputs/<chat-id>/`.
 
 **Modelo local por defecto**: `Phi-4-mini-instruct-Q4_K_M.gguf`
 (`https://huggingface.co/unsloth/Phi-4-mini-instruct-GGUF/resolve/main/Phi-4-mini-instruct-Q4_K_M.gguf`,
@@ -116,8 +121,8 @@ Los chats (carpetas, mensajes y tarjetas de herramientas) se guardan aparte, en
 La barra lateral (colapsable) tiene cuatro secciones:
 
 - **Chat**: conversaciones con carpetas anidables, drag & drop, click derecho; burbujas con
-  copiar/reiniciar, redactor con cola de mensajes mientras la IA responde y tarjetas de
-  herramientas.
+  copiar/reiniciar, redactor con cola de mensajes mientras la IA responde, tarjetas de
+  herramientas, adjuntos descargables y el estado de permisos del chat.
 - **Modelos**: catálogo con Descargar (barra + Cancelar), Usar (reinicia el motor con ese
   modelo), agregar repo/archivo de HF (con "Listar .gguf").
 - **Motor**: segmentado LOCAL/REMOTE, colección de APIs compatibles con OpenAI
@@ -142,9 +147,12 @@ En desarrollo todo (config, modelos, docs internas) vive en `<raíz>/app-home`.
       en LOCAL, con reparación del JSON que devuelve el modelo.
 - [x] **F2 — markdown y código**: renderizador propio, bloques de código con resaltado,
       copiar y "guardar como…" con extensiones reales.
+- [x] **F3 — archivos y permisos**: `create_file` y `download_url` (adjuntos que se abren o se
+      guardan desde el chat), permisos **por categoría, apagados por defecto y por chat**
+      (`/permitir-archivos`, `/permisos`, `/revocar-*`).
 - [x] **Arquitectura modular**: un paquete por área en los tres módulos.
-- [ ] **F3–F7** (en curso, plan en `docs/PLAN-INTEGRACION.md`): archivos descargables en el
-      chat, web (DuckDuckGo), LaTeX (math + PDF), HF Spaces (Gradio) y MCP preparado.
+- [ ] **F4–F7** (en curso, plan en `docs/PLAN-INTEGRACION.md`): web (DuckDuckGo), LaTeX
+      (math + PDF), HF Spaces (Gradio) y MCP preparado.
 - [ ] Manual de uso del FunshiEngine como fuente RAG.
 - [ ] Verificador determinista de citas (script post-generación).
 - [ ] Tests unitarios del `ChatViewModel` (cola, arranque, cancelación) y de integración de

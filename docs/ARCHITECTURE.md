@@ -62,7 +62,7 @@ en el request `tools[]`; la dependencia va en un solo sentido.
 | `rag.store` | `ChatStore`: persistencia del árbol de chats (`config/chats.json`) |
 | `rag.retrieval` | `Chunker`, `Bm25Index`, `KnowledgeBase`, `Sources`, modelos de documento |
 | `rag.engine` | `RagEngine`: arma el prompt (system + contexto + historial) y responde |
-| `rag.agent` | Tool calling: `Tool`, `ToolResult`, `ToolContext`, `ToolRegistry`, `AgentLoop`, `PromptToolParser`, `ToolCallSanitizer`, `tools/GetTimeTool` |
+| `rag.agent` | Tool calling: `Tool`, `ToolResult`, `ToolContext`, `ToolRegistry`, `AgentLoop`, `PromptToolParser`, `ToolCallSanitizer`, `ToolPermissions`, `tools/GetTimeTool`, `tools/FileTools` |
 
 ### `frontend` — UI
 
@@ -148,6 +148,101 @@ DOCS sigue exigiendo fuentes: una respuesta sin citas no se entrega como si estu
 
 ---
 
+## Permisos de herramientas (F3)
+
+### Regla
+
+El permiso es **por categoría**, está **apagado por defecto** y se concede **por chat**. Cada
+herramienta declara su `ToolCategory` (`NONE`, `FILES`, `WEB`, `MCP`); `NONE` significa "sin
+efecto externo" (la hora, por ejemplo) y nunca pregunta nada.
+
+### La puerta única
+
+`rag.agent.ToolPermissions.authorize(tool, argsJson, ctx)` es el **único** lugar donde se decide si
+una herramienta corre:
+
+```text
+categoría NONE              -> ALLOW_ONCE (pasa)
+categoría ya concedida      -> ALLOW_ONCE (pasa)
+categoría no concedida      -> ctx.requestPermission(PermissionRequest(...))
+                                -> ALLOW_ONCE | ALLOW_ALWAYS | DENY
+```
+
+`ToolContext` lleva lo que la puerta necesita: `chatId`, `outputsDir`,
+`grantedCategories` y el callback `requestPermission`. `PermissionRequest` lleva la herramienta, la
+categoría, un resumen legible (`Tool.describeCall(args)`) y los argumentos crudos, que la UI
+muestra para que la decisión sea informada.
+
+### Del backend a la UI
+
+El bucle corre en una corrutina de I/O y la UI vive en el hilo de Swing, así que el diálogo se
+resuelve con un `CompletableDeferred`:
+
+```text
+AgentLoop (hilo I/O)  --authorize()-->  ToolContext.requestPermission
+        |                                        |
+        |                          app.chat.askPermission(req)
+        |                          (salta a Dispatchers.Main y espera)
+        v                                        v
+   PermissionDecision            PermissionDialog (AlertDialog)
+   (vuelve por el deferred)      -> answerPermission(decision)
+```
+
+"Permitir siempre" además concede la categoría en ese chat (`grantCategory`), que persiste el
+estado. Si la generación se cancela con el diálogo abierto, `askPermission` limpia el estado en
+`NonCancellable` y la cancelación se propaga: nunca queda un diálogo colgado.
+
+### Denegación
+
+| Situación | Comportamiento |
+|-----------|----------------|
+| Primera denegación | El modelo recibe el feedback ("el usuario NO autorizó la herramienta, no la vuelvas a pedir") y sigue conversando. **No** cuenta como error de herramienta. |
+| El modelo insiste | La segunda llamada se deniega **automáticamente** (no se repite el diálogo) y el bucle corta. |
+
+### Estado por chat
+
+El estado vive en el nodo del chat: `StoredNode.grantedCats` en `config/chats.json` (y
+`ChatNode.Chat.grantedCats` en memoria). Los chats viejos, sin el campo, arrancan sin permisos
+concedidos. Comandos: `/permitir-archivos`, `/permitir-web`, `/permitir-mcp`, `/revocar-*` y
+`/permisos`. La cabecera del chat muestra **"Permisos: …"**.
+
+---
+
+## Herramientas de archivos y adjuntos (F3)
+
+### Dónde se escriben
+
+`create_file` y `download_url` escriben **siempre** dentro de
+`app-home/outputs/<chat-id>/`. El modelo decide el **nombre**, nunca la carpeta: el nombre se
+valida (sin separadores, sin `..`, no empieza con punto, extensión en lista blanca) y la ruta final
+se normaliza y se comprueba contra el directorio.
+
+| Herramienta | Qué hace | Topes |
+|-------------|----------|-------|
+| `create_file` | Escribe un archivo de texto o código (`.py`, `.kt`, `.cpp`, `.glsl`, `.html`, `.css`, `.js`, `.json`, `.rs`…) | 5 MB, nombre ≤ 120 caracteres |
+| `download_url` | Descarga una URL `http/https` a la carpeta del chat | 50 MB, timeout de 5 min, `Content-Length` comprobado |
+
+`download_url` escribe primero en `<archivo>.part` y mueve al final (atómico), con un `Mutex` por
+ruta para que dos descargas al mismo archivo no se pisen. El nombre sale del `Content-Disposition`
+o de la URL; si falta la extensión, se deduce del `Content-Type`. La red usa el `HttpClient` del
+JDK, igual que `rag/retrieval/Sources.kt` (el backend no depende de Ktor).
+
+### Del archivo a la burbuja
+
+```text
+ToolResult.Ok(artifacts = [Artifact])
+    -> AgentEvent.ToolEnd(... artifacts)
+    -> ExecutedTool(... artifacts)
+    -> UiMessage.attachments (UiAttachment)
+    -> StoredMessage.attachments (StoredAttachment)  [config/chats.json]
+    -> AttachmentCard: Abrir (Desktop) | Guardar (JFileChooser, hilo de Swing)
+```
+
+`AttachmentCard` muestra ícono, nombre, tamaño y tipo MIME; **Abrir** lo lanza con la aplicación
+del sistema y **Guardar…** copia el archivo donde elija el usuario.
+
+---
+
 ## Flujo de Datos Principal
 
 ```
@@ -177,8 +272,11 @@ sobre el ViewModel** (Kotlin no tiene `partial class`):
 | `ChatLibrary.kt` | biblioteca | Árbol de chats y carpetas (crear, renombrar, mover, borrar) y persistencia en `config/chats.json` |
 | `ChatEngine.kt` | motor | Arranque en segundo plano, reinicio del gateway, documentación por motor |
 | `ChatCatalog.kt` | catálogo | Modelos GGUF (descarga, búsqueda en Hugging Face, activación) y APIs remotas (alta, prueba de conexión) |
-| `ChatCommands.kt` | comandos | Comandos de barra (`/help`, `/model`, `/thinking`, `/power`, `/tools`) |
-| `ChatMessages.kt` | mapeo | Conversión entre `UiMessage` y `StoredMessage` (incluidas las tarjetas de herramientas) |
+| `ChatCommands.kt` | comandos | Comandos de barra (`/help`, `/model`, `/thinking`, `/power`, `/tools`, `/permitir-*`, `/revocar-*`, `/permisos`) |
+| `ChatMessages.kt` | mapeo | Conversión entre `UiMessage` y `StoredMessage` (incluidas las tarjetas de herramientas y los adjuntos) |
+| `ChatPermissions.kt` | permisos | Estado de permisos por chat y handshake `askPermission` / `answerPermission` con el backend |
+| `PermissionDialog.kt` | permisos | Diálogo "¿Permitir?" (Permitir siempre / Una vez / Cancelar) |
+| `AttachmentCard.kt` | adjuntos | Tarjeta de archivo producido por el modelo (Abrir / Guardar…) |
 
 Los miembros que hacen falta desde varias áreas son `internal` (visibles dentro del módulo del
 frontend, no fuera). Las pantallas que usan una extensión la importan explícitamente.
@@ -256,7 +354,9 @@ Archivo: `<app-home>/config/app-config.json`
 
 El árbol de chats vive aparte, en `<app-home>/config/chats.json` (esquema recursivo
 `StoredNode`: carpetas con hijos y chats con mensajes; las tarjetas de herramientas se guardan en
-`StoredMessage.toolCards`).
+`StoredMessage.toolCards`, los adjuntos en `StoredMessage.attachments` y los permisos concedidos
+en `StoredNode.grantedCats`). Los chats guardados antes de estas features se siguen leyendo: los
+campos ausentes toman su valor por defecto (sin tarjetas, sin adjuntos, sin permisos).
 
 ---
 
@@ -299,6 +399,8 @@ data class LlmException(
 | `app/chat/ChatSidebar.kt` | Árbol de chats/carpetas (drag & drop, click derecho) |
 | `app/chat/MessageBubble.kt` | Burbuja de mensaje (usuario / modelo) con copiar y reiniciar |
 | `app/chat/ToolCallCard.kt` | Tarjeta de herramienta: nombre, argumentos, estado y resultado |
+| `app/chat/AttachmentCard.kt` | Tarjeta de adjunto: nombre, tamaño, tipo y acciones Abrir / Guardar… |
+| `app/chat/PermissionDialog.kt` | Diálogo de permiso de herramienta (Permitir siempre / Una vez / Cancelar) |
 | `app/chat/ComposerBar.kt` | Redactor, cola de mensajes y botones enviar/detener |
 | `app/chat/ChatScrollbarAdapter.kt` | Scrollbar de altura estable (no salta con respuestas largas) |
 | `app/chat/LoadingPane.kt` | Pantalla de carga completa (fallback + reintentar) |
@@ -315,8 +417,10 @@ Los paneles largos (Motor, Config, Modelos) usan `verticalScroll` + `VerticalScr
 
 ## Extensibilidad
 
-1. **Nueva herramienta**: implementa `Tool` en `rag.agent`, regístrala en `ToolRegistry` (el
-   ViewModel la instancia en `ChatViewModel.tools`).
+1. **Nueva herramienta**: implementa `Tool` en `rag.agent`, declara su `ToolCategory` (`NONE` si no
+   tiene efecto externo) y regístrala en `ToolRegistry` (el ViewModel la instancia en
+   `ChatViewModel.tools`). Si devuelve archivos, agregalos como `Artifact` en `ToolResult.Ok` para
+   que aparezcan como adjuntos.
 2. **Nueva fuente RAG**: implementa `DocSource` y agrégala a `KnowledgeBase.sync()`.
 3. **Nuevo proveedor LLM**: implementa `LlmGateway` y regístralo en `LlmService.start()`.
 4. **Nueva pantalla**: añade el valor al enum `Screen`, el `case` en `ChatScreen` y el item en

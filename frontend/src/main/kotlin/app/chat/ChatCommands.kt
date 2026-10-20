@@ -7,6 +7,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import llm.api.OpenAiCompatibleGateway
 import llm.config.LlmMode
+import rag.agent.ToolCategory
 
 /**
  * Comandos de chat (los que empiezan con `/`).
@@ -28,6 +29,13 @@ internal fun ChatViewModel.handleCommand(raw: String) {
         "thinking" -> cmdThinking(arg)
         "power" -> cmdPower(arg)
         "tools" -> cmdTools()
+        "permitir-archivos" -> cmdGrant(ToolCategory.FILES)
+        "permitir-web" -> cmdGrant(ToolCategory.WEB)
+        "permitir-mcp" -> cmdGrant(ToolCategory.MCP)
+        "revocar-archivos" -> cmdRevoke(ToolCategory.FILES)
+        "revocar-web" -> cmdRevoke(ToolCategory.WEB)
+        "revocar-mcp" -> cmdRevoke(ToolCategory.MCP)
+        "permisos" -> cmdPermissions()
         else -> "Comando no reconocido: `$raw`.\n\n" + cmdHelp()
     }
     updateLast(reply)
@@ -44,6 +52,11 @@ internal fun ChatViewModel.cmdHelp(): String = """
     · `/thinking [off|low|medium|high]` — nivel de razonamiento del modelo.
     · `/power [low|medium|high]` — potencia de la respuesta (tokens de salida).
     · `/tools` — lista las herramientas que el modelo puede usar.
+    · `/permisos` — estado de los permisos de herramientas de este chat.
+    · `/permitir-archivos` — concede permiso FILES en este chat.
+    · `/permitir-web` — concede permiso WEB en este chat.
+    · `/revocar-archivos` — quita el permiso FILES de este chat.
+    · `/revocar-web` — quita el permiso WEB de este chat.
 
     Mientras el modelo responde podés seguir escribiendo: los mensajes
     se encolan y se envían juntos, uno debajo del otro, al terminar.
@@ -121,4 +134,48 @@ internal fun ChatViewModel.cmdPower(arg: String): String {
 internal fun ChatViewModel.cmdTools(): String {
     if (tools.isEmpty) return "No hay herramientas registradas todavía."
     return "Herramientas que puede usar el modelo (el ${if (config.llm.mode == LlmMode.REMOTE) "protocolo OpenAI nativo" else "protocolo por prompt"}):\n\n" + tools.describe()
+}
+
+/* ---------------------------------------------------------------------------
+ * Permisos de herramientas (F3): por categoría y por chat.
+ * ------------------------------------------------------------------------- */
+
+/** `/permitir-<cat>` — concede una categoría en el chat activo. */
+internal fun ChatViewModel.cmdGrant(category: ToolCategory): String {
+    grantCategory(activeChatId, category)
+    return "Permiso **${category.label}** concedido en este chat.\n\n" +
+        "Las herramientas de esa categoría se ejecutan sin volver a preguntar " +
+        "(en este chat solamente).\n\n" +
+        "Para quitarlo: `/revocar-${slug(category)}`."
+}
+
+/** `/revocar-<cat>` — quita una categoría del chat activo. */
+internal fun ChatViewModel.cmdRevoke(category: ToolCategory): String {
+    revokeCategory(activeChatId, category)
+    return "Permiso **${category.label}** revocado en este chat.\n\n" +
+        "Vuelve a pedir confirmación cada vez que el modelo use una herramienta de esa categoría."
+}
+
+/** `/permisos` — estado de los permisos del chat activo. */
+internal fun ChatViewModel.cmdPermissions(): String {
+    val granted = grantedCategories(activeChatId)
+    val lines = ToolCategory.entries
+        .filter { it != ToolCategory.NONE }
+        .map { c ->
+            val state = if (c in granted) "concedido" else "apagado"
+            val cmd = if (c in granted) "/revocar-${slug(c)}" else "/permitir-${slug(c)}"
+            "· **${c.label}** (`${c.name}`): $state — `$cmd`"
+        }
+    return "Permisos de este chat (no se propagan a otros chats):\n\n" +
+        lines.joinToString("\n") +
+        "\n\nSin permiso concedido, el modelo pide confirmación cada vez que usa " +
+        "una herramienta de esa categoría (podés elegir \"permitir siempre\")."
+}
+
+/** Nombre corto de la categoría en los comandos (`/permitir-archivos`). */
+private fun slug(c: ToolCategory): String = when (c) {
+    ToolCategory.FILES -> "archivos"
+    ToolCategory.WEB -> "web"
+    ToolCategory.MCP -> "mcp"
+    ToolCategory.NONE -> "ninguno"
 }

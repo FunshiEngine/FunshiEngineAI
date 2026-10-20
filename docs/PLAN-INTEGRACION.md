@@ -65,18 +65,26 @@ data class ToolSpec(
 
 interface Tool {
     val spec: ToolSpec
+    /** Categoría de permiso que exige (NONE = siempre disponible). */
+    val category: ToolCategory
+    /** Resumen legible de la llamada (para el diálogo de permiso). */
+    fun describeCall(args: JsonObject): String
     /** Ejecuta la herramienta y devuelve un resultado apto para devolver al modelo. */
     suspend fun execute(args: JsonObject, ctx: ToolContext): ToolResult
 }
 
 sealed class ToolResult {
-    data class Ok(val text: String) : ToolResult()          // el texto va al modelo
+    /** El texto va al modelo; [artifacts] son los archivos producidos. */
+    data class Ok(val text: String, val artifacts: List<Artifact> = emptyList()) : ToolResult()
     data class Error(val message: String) : ToolResult()    // error legible
 }
 ```
 
-`ToolContext` lleva: chat activo, carpeta `outputs/<chat-id>`, política de permisos,
-dispatcher IO y el `UiProgress` para reportar estado.
+`ToolContext` lleva: chat activo (`chatId`), carpeta de salidas
+(`outputs/<chat-id>`), las categorías ya concedidas en ese chat
+(`grantedCategories`) y el callback `requestPermission` con el que se pide
+permiso al usuario. Todo el I/O bloqueante de las herramientas va en
+`Dispatchers.IO`.
 
 ### 3.2 Cambios en `LlmGateway` (`llm-api`)
 
@@ -194,7 +202,8 @@ con Compose 1.7.3): párrafos, listas, bold/italic/inline-code, tablas, encabeza
 ### 7.1 Categorías
 
 `WEB` (web_search, web_fetch), `FILES` (create_file, download_url),
-`MCP` (futuro). Cada `Tool` declara su categoría.
+`MCP` (futuro). Cada `Tool` declara su categoría (`ToolCategory`); `NONE`
+significa "sin efecto externo" (la hora, por ejemplo) y nunca pregunta nada.
 
 ### 7.2 Política por chat
 
@@ -207,10 +216,26 @@ con Compose 1.7.3): párrafos, listas, bold/italic/inline-code, tablas, encabeza
   - `/permisos` — muestra categorías concedidas y comando para revocar.
   - `/revocar-web`, `/revocar-archivos`.
 
+**Estado en F3 (2026-10-20): implementado.** La puerta única es
+`ToolPermissions.authorize(tool, argsJson, ctx)`, que devuelve
+`ALLOW_ONCE` (ya concedido o sin efecto externo), `ALLOW_ALWAYS` o `DENY`.
+La UI resuelve el diálogo con un `CompletableDeferred`: si la generación se
+cancela con el diálogo abierto, el diálogo se cierra y la cancelación se
+propaga.
+
+Semántica de la denegación (decidida al implementar):
+
+- La **primera** denegación no cuenta como error de herramienta: el modelo
+  recibe el feedback ("el usuario no autorizó la herramienta, no la vuelvas a
+  pedir") y sigue conversando.
+- Si el modelo **insiste**, la segunda llamada se deniega automáticamente (sin
+  volver a abrir el diálogo) y el bucle corta.
+
 ### 7.3 Límites globales
 
-Máx. 8 iteraciones de tool loop; timeouts por herramienta; tamaño de outputs.
-Persistencia en config v4 (`configVersion: 4`).
+Máx. 8 iteraciones de tool loop; timeouts por herramienta; tamaño de outputs
+(5 MB por archivo creado, 50 MB por descarga). La persistencia de la config
+v4 (`configVersion: 4`) llega en F7.
 
 ---
 
@@ -283,14 +308,16 @@ Rutas actualizadas a la estructura modular (`docs/ARCHITECTURE.md`); lo que ya e
 
 ```
 backend/
-  rag/agent/Tool.kt                 ✅ ToolSpec, Tool, ToolResult, ToolContext
+  rag/agent/Tool.kt                 ✅ ToolSpec, Tool, ToolResult, ToolContext,
+                                   ✅ ToolCategory, PermissionRequest/Decision, Artifact
   rag/agent/ToolRegistry.kt         ✅ registro con origen LOCAL|MCP
   rag/agent/AgentLoop.kt            ✅ bucle de tool calling
+  rag/agent/ToolPermissions.kt      ✅ puerta única de permisos
   rag/agent/ToolCallSanitizer.kt    ✅ reparación del JSON que devuelve el modelo
   rag/agent/PromptToolParser.kt     ✅ parser del bloque ```tool_call (modo LOCAL)
   rag/agent/tools/GetTimeTool.kt    ✅ herramienta de prueba
   rag/agent/tools/WebTools.kt       # web_search, web_fetch (+ SearchProvider)
-  rag/agent/tools/FileTools.kt      # create_file, download_url
+  rag/agent/tools/FileTools.kt      ✅ create_file, download_url
   rag/agent/tools/LatexTool.kt      # latex_compile (F5b)
   rag/mcp/McpToolAdapter.kt         # contrato McpConnection (preparación)
 llm-api/
@@ -301,9 +328,11 @@ frontend/
   app/ui/Markdown.kt                ✅ renderer
   app/ui/CodeBlock.kt               ✅ highlight + copiar + guardar/exportar
   app/chat/ToolCallCard.kt          ✅ tarjeta de herramienta en uso
-  app/chat/ChatViewModel.kt         # AgentLoop, permisos por chat, /comandos
+  app/chat/ChatViewModel.kt         ✅ AgentLoop, permisos por chat, /comandos
   app/chat/ChatCommands.kt          ✅ comandos de barra (extensión del ViewModel)
-  app/chat/AttachmentCard.kt        # adjuntos descargables
+  app/chat/ChatPermissions.kt       ✅ estado de permisos + handshake con la UI
+  app/chat/PermissionDialog.kt      ✅ diálogo "¿Permitir?"
+  app/chat/AttachmentCard.kt        ✅ adjuntos descargables
 ```
 
 Config v3 → v4: secciones `tools`, `outputs`, `latex`, `mcp` con migración
@@ -317,7 +346,7 @@ automática (patrón `configVersion` existente).
 |------|-----------|--------------|--------|
 | **F1** | LlmChunk + tools en gateway OpenAI + AgentLoop + ToolRegistry + ToolCallCard + tool de prueba (`get_time`) | — | ✅ 2026-10-20 |
 | **F2** | Renderer markdown + CodeBlock con highlight + extensiones + Guardar como… | — | ✅ 2026-10-20 |
-| **F3** | `create_file` + `download_url` + AttachmentCard + permisos FILES + `/permitir-archivos` | F1 | Pendiente |
+| **F3** | `create_file` + `download_url` + AttachmentCard + permisos FILES + `/permitir-archivos` | F1 | ✅ 2026-10-20 |
 | **F4** | `web_search` (DuckDuckGo) + `web_fetch` + permisos WEB + `/permitir-web` + escenario E2E del PDF | F1, F3 | Pendiente |
 | **F5** | Math con JLaTeXMath + `latex_compile` → PDF (autodetección TinyTeX/MiKTeX) | F2, F3 | Pendiente |
 | **F6** | `GradioSpaceGateway` para HF Spaces | **CONGELADA** — decisión pendiente (ver §10) | — |

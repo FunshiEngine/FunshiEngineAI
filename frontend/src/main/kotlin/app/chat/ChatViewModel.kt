@@ -7,6 +7,7 @@ import app.core.ChatNode
 import app.core.ChatRow
 import app.core.ChatTree
 import app.core.Screen
+import app.core.UiAttachment
 import app.core.UiDocsFile
 import app.core.UiMessage
 import app.core.UiProgress
@@ -29,8 +30,12 @@ import llm.error.LlmException
 import llm.service.LlmService
 import rag.agent.AgentEvent
 import rag.agent.AgentLoop
+import rag.agent.PermissionDecision
+import rag.agent.PermissionRequest
 import rag.agent.ToolContext
 import rag.agent.ToolRegistry
+import rag.agent.tools.CreateFileTool
+import rag.agent.tools.DownloadUrlTool
 import rag.agent.tools.GetTimeTool
 import rag.config.AppConfig
 import rag.config.AppPaths
@@ -66,7 +71,7 @@ class ChatViewModel {
     internal val kb = KnowledgeBase(config.rag)
     internal var engine: RagEngine? = null
     /** Herramientas disponibles para el modelo (el AgentLoop las ejecuta). */
-    internal val tools = ToolRegistry(listOf(GetTimeTool()))
+    internal val tools = ToolRegistry(listOf(GetTimeTool(), CreateFileTool(), DownloadUrlTool()))
     internal var chatJob: Job? = null
     /** Cola de mensajes pendientes mientras no hay engine listo. */
     internal val pendingMessages = mutableListOf<Pair<String, List<ChatMessage>>>()
@@ -142,6 +147,15 @@ class ChatViewModel {
     /** Modo del chat: "GENERAL" (libre) u "DOCS" (RAG sobre documentación). */
     var chatMode by mutableStateOf(config.llm.chatMode)
         internal set
+    /**
+     * Petición de permiso esperando respuesta del usuario (null = no hay
+     * ninguna). La UI la muestra como diálogo y la responde con
+     * [answerPermission].
+     */
+    var permissionRequest by mutableStateOf<PermissionRequest?>(null)
+        internal set
+    /** Respuesta pendiente de la petición de permiso (la resuelve la UI). */
+    internal var permissionAnswer: CompletableDeferred<PermissionDecision>? = null
 
     init {
         // Carga el árbol guardado y activa el primer chat (o crea uno vacío).
@@ -271,21 +285,31 @@ class ChatViewModel {
                 val native = config.llm.mode == LlmMode.REMOTE
                 val loop = AgentLoop(eng.gateway, tools, native)
                 var cards = listOf<UiToolCall>()
+                var attachments = listOf<UiAttachment>()
                 val sb = StringBuilder()
 
+                // Contexto de herramientas: carpeta de salidas del chat,
+                // permisos ya concedidos en ese chat y la vía para preguntar.
+                val ctx = ToolContext(
+                    chatId = originChatId,
+                    outputsDir = outputsDirFor(originChatId),
+                    grantedCategories = grantedCategories(originChatId),
+                    requestPermission = { req -> askPermission(req) },
+                )
+
                 val answer = withContext(Dispatchers.IO) {
-                    loop.run(prepared.messages, ToolContext(originChatId)) { ev ->
+                    loop.run(prepared.messages, ctx) { ev ->
                         when (ev) {
                             is AgentEvent.Text -> {
                                 sb.append(ev.delta)
                                 if (activeChatId == originChatId) {
-                                    updateLast(sb.toString(), sourceLabels, cards)
+                                    updateLast(sb.toString(), sourceLabels, cards, attachments)
                                 }
                             }
                             is AgentEvent.ToolStart -> {
                                 cards = cards + UiToolCall(ev.name, ev.argsJson, null, "")
                                 if (activeChatId == originChatId) {
-                                    updateLast(sb.toString(), sourceLabels, cards)
+                                    updateLast(sb.toString(), sourceLabels, cards, attachments)
                                 }
                             }
                             is AgentEvent.ToolEnd -> {
@@ -297,15 +321,21 @@ class ChatViewModel {
                                 } else {
                                     cards + UiToolCall(ev.name, "", ev.ok, ev.result)
                                 }
+                                // Archivos producidos por la herramienta (adjuntos).
+                                if (ev.artifacts.isNotEmpty()) {
+                                    attachments = attachments + ev.artifacts.map {
+                                        UiAttachment(it.name, it.path, it.sizeBytes, it.mime)
+                                    }
+                                }
                                 if (activeChatId == originChatId) {
-                                    updateLast(sb.toString(), sourceLabels, cards)
+                                    updateLast(sb.toString(), sourceLabels, cards, attachments)
                                 }
                             }
                         }
                     }
                 }
                 if (activeChatId == originChatId) {
-                    updateLast(answer.text, sourceLabels, cards)
+                    updateLast(answer.text, sourceLabels, cards, attachments)
                 }
             } catch (e: CancellationException) {
                 if (activeChatId == originChatId) updateLast("(cancelado)")
@@ -409,10 +439,15 @@ class ChatViewModel {
         send(text)
     }
 
-    internal fun updateLast(text: String, sources: List<String> = emptyList(), toolCards: List<UiToolCall> = emptyList()) {
+    internal fun updateLast(
+        text: String,
+        sources: List<String> = emptyList(),
+        toolCards: List<UiToolCall> = emptyList(),
+        attachments: List<UiAttachment> = emptyList(),
+    ) {
         if (messages.isEmpty()) return
         messages = messages.dropLast(1) +
-            messages.last().copy(text = text, sources = sources, toolCalls = toolCards)
+            messages.last().copy(text = text, sources = sources, toolCalls = toolCards, attachments = attachments)
     }
 
     internal fun friendly(e: Throwable): String = when (e) {

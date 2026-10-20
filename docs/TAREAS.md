@@ -10,8 +10,8 @@ y se mueve a `docs/CHANGES.md` en el próximo registro de versión.
 ### 0. Integración por fases: herramientas, formatos, web, archivos, LaTeX, HF Spaces, MCP
 
 **Estado:** PLANIFICADO (2026-10-19) — diseño completo en `docs/PLAN-INTEGRACION.md`
-(decisiones cerradas con el usuario; ver §2 de ese documento). **F1 y F2 IMPLEMENTADOS
-(2026-10-20), compilados.**
+(decisiones cerradas con el usuario; ver §2 de ese documento). **F1, F2 y F3
+IMPLEMENTADOS (2026-10-20), compilados y verificados.**
 
 Implementación por fases (orden acordado):
 
@@ -22,9 +22,17 @@ Implementación por fases (orden acordado):
       `MarkdownText`) + `CodeBlock` con syntax highlight propio, copiar y
       "Guardar como…" con extensiones reales (`.py`, `.kt`, `.cpp`, `.glsl`,
       `.html`, `.css`, `.js`, `.json`, `.rs`…).
-- [ ] **F3**: `create_file` + `download_url` + `AttachmentCard` + permisos FILES
+- [x] **F3**: `create_file` + `download_url` + `AttachmentCard` + permisos FILES
       + comando `/permitir-archivos` (permisos por categoría, default off,
-      asociados al chat activo).
+      asociados al chat activo). **Implementado (2026-10-20)**: `ToolCategory`
+      (`NONE`/`FILES`/`WEB`/`MCP`), `ToolPermissions.authorize()` como única
+      puerta, `ToolContext` con `outputsDir` + `grantedCategories` + callback de
+      permiso, `PermissionRequest`/`PermissionDecision`, `Artifact` en
+      `ToolResult.Ok`, `create_file` (5 MB, extensión en lista blanca, sin
+      rutas), `download_url` (50 MB, `.part` + move atómico, `Mutex` por ruta),
+      diálogo de permiso, tarjeta de adjunto (Abrir/Guardar), comandos
+      `/permitir-*` / `/revocar-*` / `/permisos` y etiqueta "Permisos: …" en la
+      cabecera.
 - [ ] **F4**: `web_search` (DuckDuckGo, sin clave) + `web_fetch` + permisos WEB
       + `/permitir-web` + escenario E2E: pedir un PDF generado por una IA web y
       entregarlo como adjunto descargable.

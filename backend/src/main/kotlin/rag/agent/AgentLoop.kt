@@ -18,7 +18,14 @@ sealed class AgentEvent {
     data class ToolStart(val callId: String, val name: String, val argsJson: String) : AgentEvent()
 
     /** Una herramienta terminó (tarjeta OK / Falló). */
-    data class ToolEnd(val callId: String, val name: String, val ok: Boolean, val result: String) : AgentEvent()
+    data class ToolEnd(
+        val callId: String,
+        val name: String,
+        val ok: Boolean,
+        val result: String,
+        /** Archivos que produjo la herramienta (se muestran como adjuntos). */
+        val artifacts: List<Artifact> = emptyList(),
+    ) : AgentEvent()
 }
 
 /** Una herramienta ya ejecutada dentro de la respuesta (para las tarjetas UI). */
@@ -28,6 +35,8 @@ data class ExecutedTool(
     val argsJson: String,
     val ok: Boolean,
     val result: String,
+    /** Archivos que produjo la herramienta (adjuntos del mensaje). */
+    val artifacts: List<Artifact> = emptyList(),
 )
 
 /** Respuesta completa del loop: texto visible + herramientas usadas. */
@@ -85,6 +94,8 @@ class AgentLoop(
         val visible = StringBuilder()
         var sanitizeFails = 0
         var consecutiveToolErrors = 0
+        /** Veces que el usuario denegó una herramienta en este mensaje. */
+        var denials = 0
 
         for (iteration in 1..maxIterations) {
             var call: LlmChunk.ToolCall? = null
@@ -128,17 +139,45 @@ class AgentLoop(
                         argsJson = sanitized.args.toString(),
                     )
                     onEvent(AgentEvent.ToolStart(invocation.id, invocation.name, invocation.argsJson))
-                    val result = execute(invocation, ctx)
-                    onEvent(AgentEvent.ToolEnd(invocation.id, invocation.name, result.ok, result.render()))
-                    used += ExecutedTool(invocation.id, invocation.name, invocation.argsJson, result.ok, result.render())
 
-                    if (!result.ok) {
+                    // PERMISO: por categoría, apagado por defecto, concedido por
+                    // chat. Si el usuario ya denegó una vez en este mensaje, no
+                    // se vuelve a preguntar (el diálogo no se repite).
+                    val tool = registry.byName(invocation.name)
+                    val denied = tool != null && (
+                        if (denials > 0) {
+                            PermissionDecision.DENY
+                        } else {
+                            ToolPermissions.authorize(tool, invocation.argsJson, ctx)
+                        }
+                    ) == PermissionDecision.DENY
+                    if (denied) denials++
+
+                    val result = if (denied) {
+                        ToolResult.Error(
+                            "El usuario NO autorizó la herramienta `${invocation.name}`. " +
+                                "No la vuelvas a pedir: continuá la conversación con lo que ya tenés " +
+                                "o explicá que no pudiste hacerlo.",
+                        )
+                    } else {
+                        execute(invocation, ctx)
+                    }
+                    val artifacts = (result as? ToolResult.Ok)?.artifacts.orEmpty()
+                    onEvent(AgentEvent.ToolEnd(invocation.id, invocation.name, result.ok, result.render(), artifacts))
+                    used += ExecutedTool(
+                        invocation.id, invocation.name, invocation.argsJson, result.ok, result.render(), artifacts,
+                    )
+
+                    if (!result.ok && !denied) {
                         consecutiveToolErrors++
                         if (consecutiveToolErrors >= MAX_CONSECUTIVE_TOOL_ERRORS) break
                     }
 
                     // Siguiente ronda: el modelo ve su llamada y el resultado.
                     work += followUpMessages(invocation, result, nativeToolCalls)
+                    // Tras un permiso denegado, si el modelo insiste se corta:
+                    // no se vuelve a abrir el diálogo ni a preguntar.
+                    if (denied && denials >= 2) break
                 }
                 is SanitizedToolCall.Invalid -> {
                     sanitizeFails++
@@ -206,7 +245,11 @@ class AgentLoop(
         return AgentAnswer(text.toString())
     }
 
-    /** Ejecuta una llamada reparada, validando nombre y argumentos. */
+    /**
+     * Ejecuta una llamada reparada, validando nombre y argumentos.
+     * El permiso ya se verificó antes de llegar acá (en el bucle): aquí sólo
+     * se ejecuta y se traducen los fallos a un error controlado.
+     */
     private suspend fun execute(call: LlmChunk.ToolCall, ctx: ToolContext): ToolResult {
         val tool = registry.byName(call.name)
             ?: return ToolResult.Error("Herramienta desconocida: ${call.name}. Disponibles: " +

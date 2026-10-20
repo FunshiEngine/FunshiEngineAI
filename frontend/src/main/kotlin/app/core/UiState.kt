@@ -26,12 +26,24 @@ data class UiToolCall(
     val result: String = "",
 )
 
+/**
+ * Archivo que el modelo creó o descargó durante la respuesta (adjunto del
+ * mensaje): se puede abrir o guardar donde quiera el usuario.
+ */
+data class UiAttachment(
+    val name: String,
+    val path: String,
+    val sizeBytes: Long = 0L,
+    val mime: String = "",
+)
+
 /** Mensaje de chat para la UI. */
 data class UiMessage(
     val role: String,
     val text: String,
     val sources: List<String> = emptyList(),
     val toolCalls: List<UiToolCall> = emptyList(),
+    val attachments: List<UiAttachment> = emptyList(),
 )
 
 /** Archivo documental cargado en un motor (para el panel "Documentación"). */

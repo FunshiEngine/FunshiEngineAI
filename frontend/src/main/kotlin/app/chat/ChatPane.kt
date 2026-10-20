@@ -105,6 +105,13 @@ fun ChatPane(vm: ChatViewModel) {
                 ) {
                     ChatModeToggle(vm)
                     Spacer(Modifier.width(12.dp))
+                    // Permisos de herramientas concedidos en este chat (F3).
+                    Text(
+                        "Permisos: ${vm.grantedCategoriesLabel()}",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.width(12.dp))
                     Text(vm.status, Modifier.weight(1f), fontSize = 12.sp, maxLines = 2)
                     TextButton(onClick = vm::reindex, enabled = vm.ready && !vm.busy) { Text("Reindexar") }
                 }
@@ -168,6 +175,9 @@ fun ChatPane(vm: ChatViewModel) {
             ComposerBar(vm, input, { input = it }, focusRequester)
         }
     }
+
+    // Diálogo de permiso: el modelo pide una herramienta sensible (F3).
+    PermissionDialog(vm)
 }
 
 // ---------------------------------------------------------------------------

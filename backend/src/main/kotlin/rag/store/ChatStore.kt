@@ -15,6 +15,18 @@ data class StoredToolCall(
     val result: String = "",
 )
 
+/**
+ * Adjunto del mensaje: archivo que el modelo creó o descargó (se puede abrir
+ * o guardar desde la tarjeta del chat).
+ */
+@Serializable
+data class StoredAttachment(
+    val name: String,
+    val path: String,
+    val sizeBytes: Long = 0L,
+    val mime: String = "",
+)
+
 /** Mensaje persistido de un chat. */
 @Serializable
 data class StoredMessage(
@@ -23,6 +35,8 @@ data class StoredMessage(
     val sources: List<String> = emptyList(),
     /** Tarjetas de herramientas usadas en esta respuesta (opcional). */
     val toolCards: List<StoredToolCall> = emptyList(),
+    /** Archivos generados o descargados en esta respuesta (opcional). */
+    val attachments: List<StoredAttachment> = emptyList(),
 )
 
 /**
@@ -39,6 +53,8 @@ data class StoredNode(
     val messages: List<StoredMessage> = emptyList(),
     /** Sólo carpetas: sus hijos (chats u otras carpetas). */
     val children: List<StoredNode> = emptyList(),
+    /** Sólo chats: categorías de herramientas concedidas (FILES, WEB…). */
+    val grantedCats: List<String> = emptyList(),
 )
 
 /**

@@ -1,5 +1,83 @@
 # Registro de Cambios - FunshiEngineAI
 
+## v0.7.0 (2026-10-20) — F3: herramientas de archivos, permisos por categoría y adjuntos
+
+### ✨ Nuevas Características
+
+#### Permisos de herramientas: por categoría, apagados por defecto y por chat
+- **`ToolCategory`** (`backend/rag/agent/Tool.kt`): `NONE` (sin efecto externo),
+  `FILES`, `WEB`, `MCP`. El permiso es **por categoría**, no por herramienta:
+  conceder `FILES` habilita `create_file` y `download_url`.
+- **`ToolPermissions`** (`backend/rag/agent/ToolPermissions.kt`, nuevo): única
+  puerta de autorización. `NONE` pasa siempre; una categoría ya concedida pasa
+  sin preguntar; si no, se pide permiso al usuario.
+- **`ToolContext`** lleva `chatId`, `outputsDir`, `grantedCategories` y un
+  callback `requestPermission`. `PermissionRequest` (herramienta, categoría,
+  resumen legible y argumentos crudos) es lo que la UI muestra.
+- **Decisiones**: `ALLOW_ONCE` (sólo esa llamada), `ALLOW_ALWAYS` (además
+  concede la categoría en ese chat) y `DENY`.
+- **Semántica de la denegación**: la primera denegación **no** cuenta como
+  error de herramienta — el modelo recibe el feedback y sigue conversando. Si
+  insiste, la segunda llamada se deniega automáticamente (sin repetir el
+  diálogo) y el bucle corta.
+- **Por chat**: el estado vive en el nodo del chat (`StoredNode.grantedCats`) y
+  se persiste en `config/chats.json`.
+
+#### Herramientas de archivos (`backend/rag/agent/tools/FileTools.kt`, nuevo)
+- **`create_file`**: escribe un archivo de texto o código en
+  `app-home/outputs/<chat-id>/`. Validación estricta: el nombre no puede traer
+  separadores ni `..`, la extensión tiene que estar en la lista permitida
+  (`.py`, `.kt`, `.cpp`, `.glsl`, `.html`, `.css`, `.js`, `.json`, `.rs`…) y el
+  contenido no puede pasar los **5 MB**. El modelo decide el nombre, nunca la
+  carpeta.
+- **`download_url`**: descarga una URL `http/https` a la misma carpeta, con
+  tope de **50 MB**, escritura en `.part` y movimiento atómico al terminar, y
+  `Mutex` por ruta (dos descargas al mismo archivo no se pisan). El nombre sale
+  del `Content-Disposition` o de la URL; si falta la extensión, se deduce del
+  `Content-Type`.
+- Ambas herramientas son de la categoría `FILES` (piden permiso).
+
+#### Adjuntos descargables en el chat
+- **`Artifact`** en el contrato de herramientas: `ToolResult.Ok` puede llevar
+  una lista de archivos producidos. `AgentEvent.ToolEnd` y `ExecutedTool` los
+  propagan hasta la UI.
+- **`UiAttachment` / `StoredAttachment`**: el adjunto se persiste con el
+  mensaje (`StoredMessage.attachments`) y se dibuja en la burbuja.
+- **`app/chat/AttachmentCard.kt`** (nuevo): tarjeta con ícono, nombre, tamaño y
+  tipo MIME, y dos acciones — **Abrir** (con la app del sistema) y **Guardar…**
+  (copia donde elija el usuario, con `JFileChooser` en el hilo de Swing).
+
+#### Diálogo de permiso y comandos
+- **`app/chat/PermissionDialog.kt`** (nuevo): `AlertDialog` con el resumen de
+  la llamada, los argumentos crudos y tres respuestas — **Permitir siempre** /
+  **Una vez** / **Cancelar**.
+- **`app/chat/ChatPermissions.kt`** (nuevo): estado del permiso, granting /
+  revoke por categoría y el handshake `askPermission` / `answerPermission`
+  (`CompletableDeferred`; si se cancela la generación con el diálogo abierto,
+  el diálogo se cierra y la cancelación se propaga).
+- **Comandos**: `/permitir-archivos`, `/permitir-web`, `/permitir-mcp`,
+  `/revocar-archivos`, `/revocar-web`, `/revocar-mcp` y `/permisos` (estado
+  del chat activo). `/help` actualizado.
+- **Cabecera del chat**: la etiqueta **"Permisos: …"** muestra las categorías
+  concedidas en el chat activo.
+
+### 🔧 Cambios internos
+- `Tool` gana `category` y `describeCall(args)` (resumen legible para el
+  diálogo); `ToolResult.Ok` gana `artifacts`.
+- El `AgentLoop` aplica la puerta de permisos antes de ejecutar cada
+  herramienta y lleva la cuenta de denegaciones.
+- `ToolRegistry` arranca con `get_time`, `create_file` y `download_url`.
+- HTTP con el cliente del JDK (`java.net.http.HttpClient`), igual que
+  `rag/retrieval/Sources.kt`: el backend no depende de Ktor.
+
+### 🔒 Sin cambios de comportamiento visible
+- Sin herramientas de categoría sensible, el bucle se comporta igual que antes.
+- `configVersion` sigue en 3 (la config v4 llega en F7); `chats.json` es
+  tolerante con chats viejos (los que no tienen `grantedCats` arrancan sin
+  permisos concedidos).
+
+---
+
 ## v0.6.0 (2026-10-20) — F2: markdown y bloques de código + arquitectura modular
 
 ### ✨ Nuevas Características

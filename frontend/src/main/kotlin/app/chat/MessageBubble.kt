@@ -80,6 +80,11 @@ internal fun MessageBubble(
                                 Text("Fuentes:", fontSize = 11.sp)
                                 m.sources.forEachIndexed { i, s -> Text("[${i + 1}] $s", fontSize = 11.sp) }
                             }
+                            // Archivos que el modelo creó o descargó (F3).
+                            if (m.attachments.isNotEmpty()) {
+                                Spacer(Modifier.height(8.dp))
+                                m.attachments.forEach { a -> AttachmentCard(a) }
+                            }
                         }
                     }
                     // Acciones del mensaje: Copiar (cualquier mensaje, sobre todo

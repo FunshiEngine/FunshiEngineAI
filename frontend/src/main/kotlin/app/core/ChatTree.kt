@@ -3,6 +3,7 @@ package app.core
 import app.chat.subtreeCounts
 import estructuras.arboles.ArbolEnlazado
 import estructuras.posicion.Position
+import rag.agent.ToolCategory
 import rag.store.StoredMessage
 import rag.store.StoredNode
 
@@ -21,6 +22,11 @@ sealed class ChatNode {
         var messages: List<StoredMessage> = emptyList(),
         /** true mientras el nombre siga derivándose del primer mensaje del usuario. */
         var autoName: Boolean = true,
+        /**
+         * Categorías de herramientas concedidas en este chat (permisos por
+         * chat: `FILES`, `WEB`…). Vacío = todo apagado (el default).
+         */
+        var grantedCats: Set<ToolCategory> = emptySet(),
     ) : ChatNode()
 }
 
@@ -157,7 +163,13 @@ class ChatTree {
     /** Serializa los hijos de la raíz al esquema persistido. */
     fun toStored(): List<StoredNode> {
         fun toNode(n: ChatNode, kids: List<Position<ChatNode>>): StoredNode = when (n) {
-            is ChatNode.Chat -> StoredNode(n.id, folder = false, name = n.name, messages = n.messages)
+            is ChatNode.Chat -> StoredNode(
+                n.id,
+                folder = false,
+                name = n.name,
+                messages = n.messages,
+                grantedCats = n.grantedCats.map { it.name },
+            )
             is ChatNode.Folder -> StoredNode(
                 n.id,
                 folder = true,
@@ -179,6 +191,7 @@ class ChatTree {
                     s.name.ifBlank { "Chat nuevo" },
                     s.messages,
                     autoName = s.name.isBlank() || s.name == "Chat nuevo",
+                    grantedCats = s.grantedCats.mapNotNull { ToolCategory.fromName(it) }.toSet(),
                 )
             }
             addChild(parentId, n)
