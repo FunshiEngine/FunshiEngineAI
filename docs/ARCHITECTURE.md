@@ -62,7 +62,7 @@ en el request `tools[]`; la dependencia va en un solo sentido.
 | `rag.store` | `ChatStore`: persistencia del árbol de chats (`config/chats.json`) |
 | `rag.retrieval` | `Chunker`, `Bm25Index`, `KnowledgeBase`, `Sources`, modelos de documento |
 | `rag.engine` | `RagEngine`: arma el prompt (system + contexto + historial) y responde |
-| `rag.agent` | Tool calling: `Tool`, `ToolResult`, `ToolContext`, `ToolRegistry`, `AgentLoop`, `PromptToolParser`, `ToolCallSanitizer`, `ToolPermissions`, `tools/GetTimeTool`, `tools/FileTools` |
+| `rag.agent` | Tool calling: `Tool`, `ToolResult`, `ToolContext`, `ToolRegistry`, `AgentLoop`, `PromptToolParser`, `ToolCallSanitizer`, `ToolPermissions`, `tools/GetTimeTool`, `tools/FileTools`, `tools/WebTools` |
 
 ### `frontend` — UI
 
@@ -240,6 +240,56 @@ ToolResult.Ok(artifacts = [Artifact])
 
 `AttachmentCard` muestra ícono, nombre, tamaño y tipo MIME; **Abrir** lo lanza con la aplicación
 del sistema y **Guardar…** copia el archivo donde elija el usuario.
+
+---
+
+## Herramientas web (F4)
+
+Las dos herramientas web son de la categoría `WEB`: piden permiso como las de
+archivos (apagado por defecto, se concede por chat con `/permitir-web`).
+
+| Herramienta | Qué hace | Topes |
+|-------------|----------|-------|
+| `web_search(query)` | Busca en la web y devuelve hasta 8 resultados (título, URL, fragmento, motor) | 3 intentos, timeout 20 s |
+| `web_fetch(url)` | Trae una página y la devuelve como texto legible (título, URL final, texto) | 2 MB, timeout 20 s |
+
+### Motores de búsqueda
+
+`web_search` no habla con ningún motor concreto: usa el contrato `SearchProvider`
+(`backend/rag/agent/tools/WebTools.kt`), así que agregar otro motor es escribir
+una clase más.
+
+| Implementación | Motor | Rol |
+|----------------|-------|-----|
+| `DuckDuckGoProvider` | `html.duckduckgo.com` + API de instant answer | Principal, sin clave |
+| `WikipediaProvider` | API de Wikipedia (`es` y `en`) | Respaldo, sin clave |
+| `ChainSearchProvider` | — | Encadena: gana el primero que responda |
+
+DuckDuckGo no publica una API sin clave y su HTML tiene un control anti-bot: a
+veces contesta con una página de verificación (HTTP 202) en lugar de
+resultados. El proveedor lo sortea en tres pasos:
+
+1. **Preparar** el cliente: una visita a la portada (una sola vez) y un cookie
+   jar en memoria, para que el servidor vea una sesión normal.
+2. **Reintentar**: si llega la verificación, espera 800 ms y vuelve a pedir
+   (hasta 3 intentos). La verificación es intermitente.
+3. **Respaldar**: si aun así no hay nada, la API de instant answer (JSON, mucho
+   más permisiva).
+
+Si tampoco eso sirve, la cadena pasa a Wikipedia: la herramienta **siempre**
+responde y cada resultado lleva su `source`, para que el modelo sepa de qué
+motor salió. Los anuncios patrocinados (`duckduckgo.com/y.js`) se descartan.
+
+### De HTML a texto
+
+`web_fetch` no usa un parser de navegador: saca `script`, `style`, `noscript`,
+`svg` y `head`, convierte los bloques en saltos de línea, resuelve las
+entidades HTML (Latin-1, puntuación, símbolos y griegas, más las numéricas) y
+recorta. La decodificación de entidades es de **una sola pasada**: `&amp;lt;`
+queda `&lt;`, no `<`.
+
+Si la respuesta es un **binario** (PDF, imagen), la herramienta no devuelve
+basura: avisa que use `download_url`, que lo baja y lo deja como adjunto.
 
 ---
 

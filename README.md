@@ -41,8 +41,11 @@ referencia de API. |
   código con resaltado**, copiar y "guardar como…" con la extensión real (`.py`, `.kt`,
   `.cpp`, `.glsl`…).
 - **Tool calling**: el modelo puede pedir herramientas a la app (hoy `get_time`,
-  `create_file` y `download_url`); funciona en modo nativo contra APIs OpenAI-compatible y en modo
-  protocolo-por-prompt contra el modelo local.
+  `create_file`, `download_url`, `web_search` y `web_fetch`); funciona en modo nativo contra APIs
+  OpenAI-compatible y en modo protocolo-por-prompt contra el modelo local.
+- **Buscar en la web** sin clave de API: `web_search` (DuckDuckGo, con respaldo automático en
+  Wikipedia) y `web_fetch` (trae la página y la devuelve como texto). Si la URL es un PDF o una
+  imagen, la herramienta avisa que use `download_url` para dejarla como adjunto.
 - **Permisos por categoría**: están **apagados por defecto** y se conceden **por chat**
   (`/permitir-archivos`, `/permitir-web`, `/permisos`, `/revocar-*`). Sin permiso concedido, la
   herramienta pide confirmación con un diálogo ("Permitir siempre / Una vez / Cancelar") y los
@@ -150,8 +153,10 @@ En desarrollo todo (config, modelos, docs internas) vive en `<raíz>/app-home`.
 - [x] **F3 — archivos y permisos**: `create_file` y `download_url` (adjuntos que se abren o se
       guardan desde el chat), permisos **por categoría, apagados por defecto y por chat**
       (`/permitir-archivos`, `/permisos`, `/revocar-*`).
+- [x] **F4 — web**: `web_search` (DuckDuckGo sin clave, con respaldo en Wikipedia) y `web_fetch`
+      (página → texto legible), permisos `WEB` por chat (`/permitir-web`).
 - [x] **Arquitectura modular**: un paquete por área en los tres módulos.
-- [ ] **F4–F7** (en curso, plan en `docs/PLAN-INTEGRACION.md`): web (DuckDuckGo), LaTeX
+- [ ] **F5–F7** (en curso, plan en `docs/PLAN-INTEGRACION.md`): LaTeX
       (math + PDF), HF Spaces (Gradio) y MCP preparado.
 - [ ] Manual de uso del FunshiEngine como fuente RAG.
 - [ ] Verificador determinista de citas (script post-generación).

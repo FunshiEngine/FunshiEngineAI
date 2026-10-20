@@ -1,5 +1,68 @@
 # Registro de Cambios - FunshiEngineAI
 
+## v0.8.0 (2026-10-20) — F4: búsqueda en la web y lectura de páginas
+
+### ✨ Nuevas Características
+
+#### `web_search`: buscar en la web sin clave de API
+- **`backend/rag/agent/tools/WebTools.kt`** (nuevo): contrato `SearchProvider`
+  (`search(query, limit)` → `List<SearchResult>`) y el resultado con `source`
+  (de qué motor salió), para que el modelo pueda citarlo.
+- **`DuckDuckGoProvider`** (principal): usa el HTML de `html.duckduckgo.com` y,
+  como último recurso, la API de *instant answer*. Sin clave y sin cuenta.
+- **`WikipediaProvider`** (respaldo): API oficial de Wikipedia en `es` y `en`,
+  sin clave y sin control anti-bot.
+- **`ChainSearchProvider`**: encadena los anteriores y gana el primero que
+  responda. Así la herramienta **siempre** devuelve algo.
+- **`WebSearchTool`**: devuelve hasta 8 resultados con título, URL, fragmento y
+  motor; si no hay nada, se lo dice al modelo para que pruebe otros términos.
+
+DuckDuckGo no publica una API sin clave y su HTML tiene un control anti-bot:
+contesta con una página de verificación (HTTP 202) en lugar de resultados. El
+proveedor lo sortea en tres pasos:
+
+1. **Prepara** el cliente: visita la portada una vez y conserva un cookie jar
+   en memoria (así el servidor ve una sesión normal).
+2. **Reintenta**: si llega la verificación, espera 800 ms y vuelve a pedir
+   (hasta 3 intentos; la verificación es intermitente).
+3. **Respalda**: si aun así no hay nada, la API de instant answer.
+
+Los anuncios patrocinados del buscador (`duckduckgo.com/y.js`) se descartan:
+no son resultados orgánicos.
+
+#### `web_fetch`: leer una página y devolverla como texto
+- Trae la URL con el `HttpClient` del JDK (timeout 20 s, tope de 2 MB),
+  reconoce el charset de la respuesta y sigue redirecciones.
+- Convierte el HTML en texto legible: saca `script`, `style`, `noscript`,
+  `svg` y `head`, pone saltos de línea en los bloques y resuelve las entidades
+  HTML.
+- **Detecta binarios**: si la URL es un PDF o una imagen, la herramienta no
+  devuelve basura — avisa que use `download_url`, que lo baja y lo deja como
+  adjunto en el chat.
+- User-Agent de navegador: muchos sitios rechazan los clientes que no se
+  parecen a uno.
+
+#### Permisos de la categoría `WEB`
+- `web_search` y `web_fetch` son de la categoría `WEB`: piden permiso como las
+  de archivos (apagado por defecto, se concede por chat con `/permitir-web`).
+  La puerta sigue siendo la misma: `ToolPermissions.authorize()`.
+
+### 🔧 Cambios internos
+- **Decodificación de entidades HTML** (`decodeEntities`): tabla de entidades
+  nombradas (Latin-1, puntuación, símbolos y griegas) más las numéricas
+  (`&#160;`, `&#xA9;`). Se resuelve todo en **una sola pasada**, así
+  `&amp;lt;` queda `&lt;` y no `<` (decodificar dos veces rompe el texto). Los
+  nombres distinguen mayúsculas: `&Aacute;` es Á y `&aacute;` es á.
+- `ToolRegistry` arranca con `get_time`, `create_file`, `download_url`,
+  `web_search` y `web_fetch`.
+- Todo el I/O de las herramientas web corre en `Dispatchers.IO`.
+
+### 🔒 Sin cambios de comportamiento visible
+- `configVersion` sigue en 3 (la config v4 llega en F7).
+- Sin permiso `WEB` concedido, las herramientas web no llegan a ejecutarse.
+
+---
+
 ## v0.7.0 (2026-10-20) — F3: herramientas de archivos, permisos por categoría y adjuntos
 
 ### ✨ Nuevas Características

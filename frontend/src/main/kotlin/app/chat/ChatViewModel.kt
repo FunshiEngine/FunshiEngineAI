@@ -37,6 +37,8 @@ import rag.agent.ToolRegistry
 import rag.agent.tools.CreateFileTool
 import rag.agent.tools.DownloadUrlTool
 import rag.agent.tools.GetTimeTool
+import rag.agent.tools.WebFetchTool
+import rag.agent.tools.WebSearchTool
 import rag.config.AppConfig
 import rag.config.AppPaths
 import rag.config.ColorProfile
@@ -71,7 +73,15 @@ class ChatViewModel {
     internal val kb = KnowledgeBase(config.rag)
     internal var engine: RagEngine? = null
     /** Herramientas disponibles para el modelo (el AgentLoop las ejecuta). */
-    internal val tools = ToolRegistry(listOf(GetTimeTool(), CreateFileTool(), DownloadUrlTool()))
+    internal val tools = ToolRegistry(
+        listOf(
+            GetTimeTool(),
+            CreateFileTool(),
+            DownloadUrlTool(),
+            WebSearchTool(),
+            WebFetchTool(),
+        ),
+    )
     internal var chatJob: Job? = null
     /** Cola de mensajes pendientes mientras no hay engine listo. */
     internal val pendingMessages = mutableListOf<Pair<String, List<ChatMessage>>>()

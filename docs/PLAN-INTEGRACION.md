@@ -189,6 +189,35 @@ con Compose 1.7.3): párrafos, listas, bold/italic/inline-code, tablas, encabeza
   si es HTML se convierte a texto (parser propio de tags, scripts y estilos
   removidos) y se recorta; devuelve título, URL final y texto.
 
+**Estado en F4 (2026-10-20): implementado.** `backend/rag/agent/tools/WebTools.kt`
+con el contrato `SearchProvider` y tres proveedores:
+
+| Proveedor | Qué es | Notas |
+|-----------|--------|-------|
+| `DuckDuckGoProvider` | HTML de `html.duckduckgo.com` + API de instant answer | Motor principal, sin clave |
+| `WikipediaProvider` | API de Wikipedia (`es` y `en`) | Respaldo, sin clave |
+| `ChainSearchProvider` | Encadena los anteriores | El primero que responde gana |
+
+DuckDuckGo no tiene API oficial sin clave y su HTML tiene un control
+anti-bot: contesta con una página de verificación (HTTP 202) en lugar de
+resultados. El proveedor lo resuelve sin hacer trampas:
+
+1. **Prepara** el cliente: visita la portada una vez y conserva un cookie jar
+   en memoria.
+2. **Reintenta**: si llega la verificación, espera 800 ms y vuelve a pedir
+   (hasta 3 intentos). La verificación es intermitente.
+3. **Respalda**: si aun así no hay resultados, usa la API de instant answer.
+
+Si tampoco eso sirve, la cadena pasa a Wikipedia: la herramienta **siempre**
+devuelve algo y el modelo ve de qué motor salió cada resultado (`source`).
+Los anuncios del buscador (`duckduckgo.com/y.js`) se descartan.
+
+`web_fetch` usa un user-agent de navegador (muchos sitios rechazan los
+clientes que no se parecen a uno), reconoce el charset de la respuesta, saca
+script/estilo/svg, decodifica las entidades HTML (Latin-1, puntuación,
+símbolos y griegas, más las numéricas) y **detecta binarios**: si la URL es un
+PDF o una imagen responde "usá `download_url`" en vez de devolver basura.
+
 ### 6.2 Cadena de uso (caso de prueba del pedido original)
 
 "Buscá la IA que genera el PDF, pasame el link de descarga" →
@@ -316,7 +345,7 @@ backend/
   rag/agent/ToolCallSanitizer.kt    ✅ reparación del JSON que devuelve el modelo
   rag/agent/PromptToolParser.kt     ✅ parser del bloque ```tool_call (modo LOCAL)
   rag/agent/tools/GetTimeTool.kt    ✅ herramienta de prueba
-  rag/agent/tools/WebTools.kt       # web_search, web_fetch (+ SearchProvider)
+  rag/agent/tools/WebTools.kt       ✅ web_search, web_fetch (+ SearchProvider)
   rag/agent/tools/FileTools.kt      ✅ create_file, download_url
   rag/agent/tools/LatexTool.kt      # latex_compile (F5b)
   rag/mcp/McpToolAdapter.kt         # contrato McpConnection (preparación)
@@ -347,7 +376,7 @@ automática (patrón `configVersion` existente).
 | **F1** | LlmChunk + tools en gateway OpenAI + AgentLoop + ToolRegistry + ToolCallCard + tool de prueba (`get_time`) | — | ✅ 2026-10-20 |
 | **F2** | Renderer markdown + CodeBlock con highlight + extensiones + Guardar como… | — | ✅ 2026-10-20 |
 | **F3** | `create_file` + `download_url` + AttachmentCard + permisos FILES + `/permitir-archivos` | F1 | ✅ 2026-10-20 |
-| **F4** | `web_search` (DuckDuckGo) + `web_fetch` + permisos WEB + `/permitir-web` + escenario E2E del PDF | F1, F3 | Pendiente |
+| **F4** | `web_search` (DuckDuckGo + respaldo Wikipedia) + `web_fetch` + permisos WEB + `/permitir-web` + escenario E2E del PDF | F1, F3 | ✅ 2026-10-20 |
 | **F5** | Math con JLaTeXMath + `latex_compile` → PDF (autodetección TinyTeX/MiKTeX) | F2, F3 | Pendiente |
 | **F6** | `GradioSpaceGateway` para HF Spaces | **CONGELADA** — decisión pendiente (ver §10) | — |
 | **F7** | Contrato MCP + registro con orígenes + config v4 + pantalla de permisos + documentación | F1–F4 | Pendiente |
@@ -365,6 +394,7 @@ F2 es independiente de F1 y puede hacerse en paralelo.
 | `pdflatex` ausente | LaTeX-docs no funciona | Fail-fast con guía de instalación (math igual funciona) |
 | Bloques de código durante streaming | Render parcial raro | Render por fragmentos estables; el fence abierto se muestra como texto hasta cerrar |
 | Contexto local (8k) con tools + contexto RAG | Respuestas degradadas | Catálogo de tools compacto; en modo Docs priorizar contexto RAG |
+| Buscador sin clave con control anti-bot | `web_search` se queda sin resultados | Preparar el cliente + reintentos + respaldo automático (Wikipedia); la herramienta siempre responde |
 
 ---
 

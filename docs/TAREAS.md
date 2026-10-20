@@ -33,9 +33,17 @@ Implementación por fases (orden acordado):
       diálogo de permiso, tarjeta de adjunto (Abrir/Guardar), comandos
       `/permitir-*` / `/revocar-*` / `/permisos` y etiqueta "Permisos: …" en la
       cabecera.
-- [ ] **F4**: `web_search` (DuckDuckGo, sin clave) + `web_fetch` + permisos WEB
+- [x] **F4**: `web_search` (DuckDuckGo, sin clave) + `web_fetch` + permisos WEB
       + `/permitir-web` + escenario E2E: pedir un PDF generado por una IA web y
-      entregarlo como adjunto descargable.
+      entregarlo como adjunto descargable. **Implementado (2026-10-20)**:
+      `backend/rag/agent/tools/WebTools.kt` con el contrato `SearchProvider` y
+      la cadena `DuckDuckGoProvider` (motor principal: prepara el cliente,
+      reintenta si llega la página de verificación y cae a la API de instant
+      answer) → `WikipediaProvider` (respaldo). `web_fetch` trae el HTML,
+      detecta el charset, saca script/estilo, decodifica entidades y reconoce
+      binarios (si es un PDF o una imagen pide usar `download_url`). Los dos son
+      de categoría `WEB`: piden permiso (apagado por defecto) igual que los
+      de archivos.
 - [ ] **F5**: Math LaTeX en chat (JLaTeXMath, offline) + `latex_compile` → PDF
       (autodetecta TinyTeX/MiKTeX; fail-fast con guía si falta).
 - [ ] **F6**: `GradioSpaceGateway` — modelo remoto vía HF Spaces. **CONGELADA**
