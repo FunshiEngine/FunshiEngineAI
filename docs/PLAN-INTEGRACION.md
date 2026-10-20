@@ -430,6 +430,13 @@ burbuja muestra el distintivo: **"Citas verificadas (n)"** o cuántas quedan
 guarda con el mensaje (`StoredCitation`) para que siga visible al reabrir el
 chat.
 
+### Documentación para el usuario
+
+`docs/MANUAL-RAG.md`: manual de uso del FunshiEngineAI como fuente RAG (los
+dos modos, de dónde sale el conocimiento, cómo se indexa y cómo escribir para
+que el recuperador encuentre, cómo se citan las fuentes, qué significa el
+distintivo, herramientas, configuración, recetas y problemas frecuentes).
+
 ### Fuera de alcance (por ahora)
 
 - No se regenera la respuesta cuando falla la verificación: el verificador
@@ -488,6 +495,7 @@ backend/
   rag/mcp/McpConfig.kt              ✅ sección `mcp` de la config (F7)
   rag/config/ToolsConfig.kt         ✅ secciones tools/outputs/latex (F7)
   rag/engine/CitationVerifier.kt    ✅ verificación de citas post-generación (F9)
+  docs/MANUAL-RAG.md                ✅ manual de uso como fuente RAG
 llm-api/
   llm/api/LlmGateway.kt             ✅ + LlmChunk tipado y tools en chatStream
   llm/api/Tools.kt                  ✅ ToolSpec (catálogo para el request)

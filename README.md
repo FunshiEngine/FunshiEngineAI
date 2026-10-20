@@ -19,6 +19,16 @@ información** — si no hay una referencia que lo respalde, lo dice.
 Cada módulo está dividido en paquetes por área (`llm.api`, `rag.agent`, `app.chat`…) — el mapa
 completo está en [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
+### Documentación
+
+| Documento | Para qué |
+|-----------|----------|
+| [`docs/MANUAL-RAG.md`](docs/MANUAL-RAG.md) | **Manual de uso**: cómo cargar la documentación, cómo se recupera, cómo se citan las fuentes y cómo leer el distintivo de citas. |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Cómo está hecho por dentro (paquetes, RAG, tool calling, render, concurrencia). |
+| [`docs/PLAN-INTEGRACION.md`](docs/PLAN-INTEGRACION.md) | Estado de cada fase, criterios de aceptación y decisiones pendientes. |
+| [`docs/TESTING.md`](docs/TESTING.md) | Los tests, cómo correrlos y qué reglas siguen. |
+| [`docs/CHANGES.md`](docs/CHANGES.md) | Historial de cambios por versión. |
+
 ### Fuentes de conocimiento (RAG)
 
 | Fuente | Estado | Descripción |
@@ -79,6 +89,9 @@ post-generación** que lo convierte en una comprobación programática:
 
 Es determinista: no llama al modelo ni a la red, así que se puede testear al 100% y nunca
 falla por culpa de la red.
+
+El manual completo de uso (cómo cargar la documentación, cómo se recupera, cómo se citan
+las fuentes) está en [`docs/MANUAL-RAG.md`](docs/MANUAL-RAG.md).
 
 ## Configuración
 
@@ -205,6 +218,7 @@ En desarrollo todo (config, modelos, docs internas) vive en `<raíz>/app-home`.
       `docs/TESTING.md`.
 - [x] **Verificador determinista de citas**: cada `[n]` de la respuesta se comprueba contra su
       fuente; la respuesta muestra si está respaldada.
+- [x] **Manual de uso como fuente RAG**: cómo cargar la documentación, cómo se recupera, cómo
+      se citan las fuentes y cómo leer el distintivo de citas (`docs/MANUAL-RAG.md`).
 - [ ] **F6 — HF Spaces (Gradio)**: **congelada**, decisión pendiente (ver §11 del plan).
 - [ ] **F8 — cliente MCP real** (SDK oficial) sobre stdio/HTTP.
-- [ ] Manual de uso del FunshiEngine como fuente RAG.

@@ -36,6 +36,16 @@
 - `CitationVerifierTest` (backend, 27 casos): cita literal, paráfrasis,
   invención de nombre propio, invención de número, fuente inexistente,
   respuesta sin citas, cita repetida, acentos, plurales y variaciones.
+- `ChatMessagesTest` — la verificación de citas viaja en los dos sentidos
+  (UI ↔ disco).
+
+### 📖 Documentación
+- **`docs/MANUAL-RAG.md`** (nuevo): manual de uso del FunshiEngineAI como
+  fuente RAG. Cubre los dos modos (General/Docs), de dónde sale el
+  conocimiento, cómo se indexa y cómo escribir para que el recuperador
+  encuentre lo que querés, cómo se citan las fuentes, qué significa el
+  distintivo de verificación, las herramientas disponibles, la configuración
+  de referencia, recetas y problemas frecuentes.
 
 ## v0.10.0 (2026-10-20) — F7: MCP preparado, configuración v4 y tests
 
