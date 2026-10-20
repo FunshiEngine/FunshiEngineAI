@@ -6,6 +6,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import llm.config.LlmConfig
+import rag.mcp.McpConfig
 
 val AppJson = Json { prettyPrint = true; ignoreUnknownKeys = true; encodeDefaults = true }
 
@@ -60,6 +61,14 @@ data class ColorProfile(
 data class AppConfig(
     val llm: LlmConfig = LlmConfig(),
     val rag: RagConfig = RagConfig(),
+    /** Herramientas: interruptor general y timeout por tool (F7). */
+    val tools: ToolsConfig = ToolsConfig(),
+    /** Salidas de los chats: carpeta y topes de tamaño (F7). */
+    val outputs: OutputsConfig = OutputsConfig(),
+    /** LaTeX: motor, timeout y tope del documento (F7). */
+    val latex: LatexConfig = LatexConfig(),
+    /** Servidores MCP declarados (F7; el transporte llega en la ronda siguiente). */
+    val mcp: McpConfig = McpConfig(),
     /** Perfiles de color guardados por el usuario (tema + acento con nombre). */
     val uiColorProfiles: List<ColorProfile> = emptyList(),
 ) {
@@ -98,14 +107,27 @@ data class AppConfig(
      * v1 → v2: activa `buildFromSource` (en v1 quedaba en false y el arranque local
      * nunca clonaba/compilaba llama.cpp: el síntoma era "no tengo llama-server").
      * v2 → v3: `chatTimeoutMs = 0` — sin límite de tiempo por respuesta (antes 90 s).
+     * v3 → v4: secciones `tools`, `outputs`, `latex` y `mcp`. Son nuevas, así que
+     * entran con sus valores por defecto (los mismos que usaban las constantes
+     * del código antes de la migración): una config migrada se comporta igual.
      */
     fun migrate(): AppConfig {
+        if (llm.configVersion >= LlmConfig.CURRENT_CONFIG_VERSION) return this
+        return migrated().save()
+    }
+
+    /**
+     * La migración sin escribir en disco (pura): misma regla que [migrate],
+     * pero devuelve la config nueva en vez de guardarla. Así se puede testear
+     * sin tocar la carpeta del usuario.
+     */
+    internal fun migrated(): AppConfig {
         if (llm.configVersion >= LlmConfig.CURRENT_CONFIG_VERSION) return this
         var l = llm
         if (l.configVersion < 2) l = l.copy(buildFromSource = true)
         if (l.configVersion < 3) l = l.copy(chatTimeoutMs = 0L)
         l = l.copy(configVersion = LlmConfig.CURRENT_CONFIG_VERSION)
-        return copy(llm = l).save()
+        return copy(llm = l)
     }
 
     /** Persiste la config actual (la usa el gestor de modelos/APIs). */

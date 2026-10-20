@@ -133,6 +133,9 @@ internal suspend fun ChatViewModel.boot() {
         progress = null
         engine = RagEngine(config.rag, kb, llm)
         ready = true
+        // Servidores MCP: se buscan sus herramientas y se registran (F7).
+        // Si no hay transporte todavía, el estado lo explica y el chat sigue.
+        runCatching { refreshMcpTools() }
         status = "Listo · ${kb.chunkCount} fragmentos indexados · ${config.llm.mode}"
         if (screen == Screen.LOADING) screen = back
         // Procesar mensajes encolados mientras el modelo cargaba

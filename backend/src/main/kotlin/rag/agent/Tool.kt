@@ -30,6 +30,22 @@ enum class ToolCategory(val label: String) {
     }
 }
 
+/**
+ * Origen de una herramienta: implementada en la app o adaptada de un
+ * servidor MCP.
+ *
+ * El origen NO cambia cómo se ejecuta (una tool MCP es una tool): sirve para
+ * poder listarlas por separado y para que la UI diga de dónde salió cada
+ * llamada.
+ */
+enum class ToolOrigin(val label: String) {
+    /** Implementada en la app (`rag.agent.tools`). */
+    LOCAL("Local"),
+
+    /** Adaptada de un servidor MCP (`rag.mcp`). */
+    MCP("MCP"),
+}
+
 /** Decisión del usuario frente a una petición de permiso. */
 enum class PermissionDecision {
     /** Autorizar sólo esta ejecución. */
@@ -115,6 +131,9 @@ interface Tool {
 
     /** Categoría de permiso que exige (NONE = siempre disponible). */
     val category: ToolCategory get() = ToolCategory.NONE
+
+    /** De dónde viene la herramienta (LOCAL por defecto; MCP la sobrescribe). */
+    val origin: ToolOrigin get() = ToolOrigin.LOCAL
 
     /** Resumen legible de la llamada, para el diálogo de permiso. */
     fun describeCall(args: JsonObject): String = spec.name

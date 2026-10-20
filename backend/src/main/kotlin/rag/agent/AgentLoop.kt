@@ -1,5 +1,6 @@
 package rag.agent
 
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -72,6 +73,12 @@ class AgentLoop(
     private val gateway: LlmGateway,
     private val registry: ToolRegistry,
     private val nativeToolCalls: Boolean,
+    /**
+     * Timeout por herramienta, en milisegundos (0 = sin límite). Viene de la
+     * sección `tools` de la config: una tool colgada no puede dejar al chat
+     * esperando para siempre.
+     */
+    private val toolTimeoutMs: Long = DEFAULT_TOOL_TIMEOUT_MS,
 ) {
 
     /** Máximo de rondas modelo+herramienta por mensaje (corte de seguridad). */
@@ -260,7 +267,19 @@ class AgentLoop(
             JsonObject(emptyMap())
         }
         return try {
-            tool.execute(args, ctx)
+            if (toolTimeoutMs <= 0) {
+                tool.execute(args, ctx)
+            } else {
+                withTimeout(toolTimeoutMs) { tool.execute(args, ctx) }
+            }
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+            // OJO: el timeout es una subclase de CancellationException, así que
+            // tiene que atraparse ANTES que ella (si no, se propaga y se corta
+            // el chat entero en vez de devolverle un error al modelo).
+            ToolResult.Error(
+                "La herramienta ${call.name} tardó más de ${toolTimeoutMs / 1000} segundos y se cortó. " +
+                    "Probá con otra herramienta o con menos datos.",
+            )
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -337,6 +356,8 @@ class AgentLoop(
         const val MAX_SANITIZE_RETRIES = 2
         /** Fallos de herramienta consecutivos antes de cortar el bucle. */
         const val MAX_CONSECUTIVE_TOOL_ERRORS = 3
+        /** Timeout por defecto de una herramienta (ms). */
+        const val DEFAULT_TOOL_TIMEOUT_MS = 60_000L
 
         /**
          * Protocolo del modo por prompt: se anexa al system prompt del turno.

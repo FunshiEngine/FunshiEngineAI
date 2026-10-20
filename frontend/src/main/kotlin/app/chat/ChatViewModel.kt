@@ -34,16 +34,12 @@ import rag.agent.PermissionDecision
 import rag.agent.PermissionRequest
 import rag.agent.ToolContext
 import rag.agent.ToolRegistry
-import rag.agent.tools.CreateFileTool
-import rag.agent.tools.DownloadUrlTool
-import rag.agent.tools.GetTimeTool
-import rag.agent.tools.LatexCompileTool
-import rag.agent.tools.WebFetchTool
-import rag.agent.tools.WebSearchTool
 import rag.config.AppConfig
 import rag.config.AppPaths
 import rag.config.ColorProfile
 import rag.engine.RagEngine
+import rag.mcp.McpManager
+import rag.mcp.PendingMcpConnector
 import rag.retrieval.KnowledgeBase
 import rag.store.ChatStore
 import rag.store.StoredMessage
@@ -73,17 +69,15 @@ class ChatViewModel {
     }
     internal val kb = KnowledgeBase(config.rag)
     internal var engine: RagEngine? = null
-    /** Herramientas disponibles para el modelo (el AgentLoop las ejecuta). */
-    internal val tools = ToolRegistry(
-        listOf(
-            GetTimeTool(),
-            CreateFileTool(),
-            DownloadUrlTool(),
-            WebSearchTool(),
-            WebFetchTool(),
-            LatexCompileTool(),
-        ),
-    )
+    /**
+     * Herramientas disponibles para el modelo (el AgentLoop las ejecuta).
+     *
+     * Se arma con la configuración actual (ver `rebuildLocalTools`): los topes
+     * de tamaño, el motor de LaTeX y el interruptor general salen de la config.
+     */
+    internal val tools = ToolRegistry()
+    /** Servidores MCP (F7): estado y herramientas descubiertas. */
+    internal var mcp = McpManager(PendingMcpConnector, config.mcp.servers)
     internal var chatJob: Job? = null
     /** Cola de mensajes pendientes mientras no hay engine listo. */
     internal val pendingMessages = mutableListOf<Pair<String, List<ChatMessage>>>()
@@ -180,6 +174,8 @@ class ChatViewModel {
             ?.messages?.map { ChatMessages.toUi(it) } ?: emptyList()
         refreshRows()
         refreshLists()
+        // Las herramientas dependen de la config (topes, motor de LaTeX).
+        rebuildLocalTools()
         // Arranque en background: NO bloquea la UI
         scope.launch { boot() }
     }
@@ -295,7 +291,7 @@ class ChatViewModel {
                 // Camino nativo (`tool_calls` del protocolo OpenAI) sólo REMOTO;
                 // LOCAL usa catálogo por prompt con bloque delimitado.
                 val native = config.llm.mode == LlmMode.REMOTE
-                val loop = AgentLoop(eng.gateway, tools, native)
+                val loop = AgentLoop(eng.gateway, tools, native, config.tools.timeoutMs)
                 var cards = listOf<UiToolCall>()
                 var attachments = listOf<UiAttachment>()
                 val sb = StringBuilder()

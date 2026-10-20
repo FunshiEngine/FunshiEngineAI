@@ -320,24 +320,67 @@ v4 (`configVersion: 4`) llega en F7.
 
 ## 9. Sección G — MCP (arquitectura preparada)
 
-- `backend/mcp/McpToolAdapter.kt`: define el contrato de conexión sin depender
-  aún del SDK:
+**Estado: IMPLEMENTADO (F7, 2026-10-20)** — contrato, adaptador, registro con
+orígenes, configuración y pantalla. **El transporte (cliente MCP) NO está
+implementado**: falta el SDK oficial de Kotlin.
+
+### 9.1 El contrato (sin SDK)
+
+`backend/rag/mcp/McpToolAdapter.kt` define el seam:
 
 ```kotlin
 interface McpConnection {
-    suspend fun listTools(): List<ToolSpec>
-    suspend fun callTool(name: String, args: JsonObject): ToolResult
+    val serverId: String
+    val displayName: String
+    suspend fun listTools(): List<McpToolDescriptor>
+    suspend fun callTool(name: String, args: JsonObject): McpToolResult
     suspend fun close()
 }
 ```
 
-- `ToolRegistry` acepta tools de origen `LOCAL | MCP` indistintamente: cuando en
-  la F6 se agregue el SDK oficial Kotlin (`io.modelcontextprotocol:kotlin-sdk`),
-  `McpServerConnection` implementa `McpConnection` sobre stdio/HTTP y cada tool
-  remota se adapta a un `Tool` del registro con categoría `MCP`.
-- Config: `mcp.servers[]` (comando/args/URL, habilitado) ya contemplada en v4.
-- **No se implementa el cliente en esta ronda** (el usuario no tiene servidores
-  aún); sí el contrato, el registro con orígenes y los lugares de extensión.
+Tipos que lo acompañan: `McpToolDescriptor` (nombre, descripción, JSON Schema
+de los argumentos), `McpToolResult` (`Ok` con contenido / `Error`) y
+`McpContent` (`Text` o `Binary` en base64).
+
+### 9.2 La tool remota es una tool
+
+`McpToolAdapter` implementa `Tool`:
+
+- **Nombre calificado**: `mcp__<servidor>__<herramienta>`. Dos servidores
+  pueden exponer tools homónimas sin pisarse, y el modelo (y el usuario) ven
+  de dónde sale cada llamada.
+- **Categoría MCP**: pide permiso como cualquier tool con efecto externo
+  (`/permitir-mcp`, apagado por defecto y por chat).
+- **Origen MCP**: `ToolOrigin.MCP`, para poder listarlas por separado.
+- **Binarios como adjuntos**: el contenido binario se guarda en la carpeta del
+  chat y aparece como adjunto, igual que un PDF de `latex_compile`.
+
+El `AgentLoop`, la puerta de permisos, el catálogo y la UI de adjuntos **no
+distinguen el origen**: una tool MCP es una tool.
+
+### 9.3 El manager
+
+`backend/rag/mcp/McpManager.kt` pide conexiones al `McpConnector` (el seam del
+transporte), arma los adaptadores y expone el estado de cada servidor
+(conectado / no conectado / por qué). Un servidor que falla no impide que los
+demás funcionen.
+
+`PendingMcpConnector` es el conector por defecto: **todavía no hay
+transporte**, así que responde con un error claro ("falta el cliente
+oficial"). El estado de cada servidor lo muestra `/mcp` y la pantalla
+**Ajustes → Herramientas**: el usuario nunca ve un servidor "conectado" que no
+responde.
+
+### 9.4 Qué falta para hablar MCP de verdad
+
+1. Agregar el SDK oficial (`io.modelcontextprotocol:kotlin-sdk`).
+2. Implementar `McpConnector` sobre stdio (proceso local) y/o HTTP.
+3. Cambiar el conector en un solo lugar (el `ChatViewModel`): el resto de la
+   app no se toca.
+
+Los servidores se **declaran** en la sección `mcp` de la config (id, nombre,
+transporte, comando/args/env o URL, habilitado). Esa configuración es la que
+va a usar el cliente cuando llegue.
 
 ---
 
@@ -375,9 +418,9 @@ Rutas actualizadas a la estructura modular (`docs/ARCHITECTURE.md`); lo que ya e
 ```
 backend/
   rag/agent/Tool.kt                 ✅ ToolSpec, Tool, ToolResult, ToolContext,
-                                   ✅ ToolCategory, PermissionRequest/Decision, Artifact
-  rag/agent/ToolRegistry.kt         ✅ registro con origen LOCAL|MCP
-  rag/agent/AgentLoop.kt            ✅ bucle de tool calling
+                                   ✅ ToolCategory, ToolOrigin, PermissionRequest/Decision, Artifact
+  rag/agent/ToolRegistry.kt         ✅ registro con origen LOCAL|MCP (F7)
+  rag/agent/AgentLoop.kt            ✅ bucle de tool calling (+ timeout por tool, F7)
   rag/agent/ToolPermissions.kt      ✅ puerta única de permisos
   rag/agent/ToolCallSanitizer.kt    ✅ reparación del JSON que devuelve el modelo
   rag/agent/PromptToolParser.kt     ✅ parser del bloque ```tool_call (modo LOCAL)
@@ -385,7 +428,10 @@ backend/
   rag/agent/tools/WebTools.kt       ✅ web_search, web_fetch (+ SearchProvider)
   rag/agent/tools/FileTools.kt      ✅ create_file, download_url
   rag/agent/tools/LatexTool.kt      ✅ latex_compile (F5b)
-  rag/mcp/McpToolAdapter.kt         # contrato McpConnection (preparación)
+  rag/mcp/McpToolAdapter.kt         ✅ contrato McpConnection + adaptador (F7)
+  rag/mcp/McpManager.kt             ✅ manager de servidores + estado (F7)
+  rag/mcp/McpConfig.kt              ✅ sección `mcp` de la config (F7)
+  rag/config/ToolsConfig.kt         ✅ secciones tools/outputs/latex (F7)
 llm-api/
   llm/api/LlmGateway.kt             ✅ + LlmChunk tipado y tools en chatStream
   llm/api/Tools.kt                  ✅ ToolSpec (catálogo para el request)
@@ -394,16 +440,19 @@ frontend/
   app/ui/Markdown.kt                ✅ renderer
   app/ui/MathRender.kt              ✅ F5a: JLaTeXMath -> imagen en memoria
   app/ui/CodeBlock.kt               ✅ highlight + copiar + guardar/exportar
+  app/chat/ChatTools.kt             ✅ registro de tools + ajustes (F7)
   app/chat/ToolCallCard.kt          ✅ tarjeta de herramienta en uso
   app/chat/ChatViewModel.kt         ✅ AgentLoop, permisos por chat, /comandos
   app/chat/ChatCommands.kt          ✅ comandos de barra (extensión del ViewModel)
   app/chat/ChatPermissions.kt       ✅ estado de permisos + handshake con la UI
   app/chat/PermissionDialog.kt      ✅ diálogo "¿Permitir?"
   app/chat/AttachmentCard.kt        ✅ adjuntos descargables
+  app/screens/ToolsSettings.kt      ✅ Ajustes → Herramientas (F7)
 ```
 
-Config v3 → v4: secciones `tools`, `outputs`, `latex`, `mcp` con migración
-automática (patrón `configVersion` existente).
+Config **v4** (migración automática desde v3): secciones `tools`, `outputs`,
+`latex` y `mcp`. Los valores por defecto son los mismos que usaban las
+constantes del código, así que una instalación migrada se comporta igual.
 
 ---
 
@@ -417,7 +466,9 @@ automática (patrón `configVersion` existente).
 | **F4** | `web_search` (DuckDuckGo + respaldo Wikipedia) + `web_fetch` + permisos WEB + `/permitir-web` + escenario E2E del PDF | F1, F3 | ✅ 2026-10-20 |
 | **F5** | Math con JLaTeXMath + `latex_compile` → PDF (autodetección TinyTeX/MiKTeX) | F2, F3 | ✅ 2026-10-20 |
 | **F6** | `GradioSpaceGateway` para HF Spaces | **CONGELADA** — decisión pendiente (ver §10) | — |
-| **F7** | Contrato MCP + registro con orígenes + config v4 + pantalla de permisos + documentación | F1–F4 | Pendiente |
+| **F7** | Contrato MCP + registro con orígenes + config v4 + pantalla de permisos + documentación | F1–F4 | ✅ 2026-10-20 |
+| **F8** | Cliente MCP real (SDK oficial) sobre stdio/HTTP | F7 | Pendiente |
+| **T** | Infraestructura de tests (JUnit 5) + 157 tests deterministas | — | ✅ 2026-10-20 |
 
 F2 es independiente de F1 y puede hacerse en paralelo.
 

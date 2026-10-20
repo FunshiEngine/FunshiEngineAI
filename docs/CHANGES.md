@@ -1,5 +1,88 @@
 # Registro de Cambios - FunshiEngineAI
 
+## v0.10.0 (2026-10-20) — F7: MCP preparado, configuración v4 y tests
+
+### ✨ Nuevas Características
+
+#### Contrato MCP (sin SDK todavía)
+- **`backend/rag/mcp/McpToolAdapter.kt`** (nuevo): los contratos del protocolo
+  MCP, sin depender del SDK oficial:
+  - `McpConnection` — la interfaz del seam: `listTools()`, `callTool()`,
+    `close()`.
+  - `McpToolDescriptor`, `McpToolResult`, `McpContent` (texto y binario).
+  - `McpToolAdapter` — convierte una tool de un servidor MCP en una tool de la
+    app. El nombre se califica (`mcp__servidor__herramienta`) para que dos
+    servidores puedan exponer tools homónimas sin pisarse.
+- La tool remota **es una tool**: misma interfaz, mismo ciclo de permisos,
+  mismos adjuntos. Lo único que cambia es la categoría (`MCP`, pide permiso) y
+  el origen (`ToolOrigin.MCP`).
+- El contenido binario que devuelve el servidor se guarda en la carpeta del
+  chat y aparece como adjunto (igual que un PDF de `latex_compile`).
+- **`backend/rag/mcp/McpManager.kt`** (nuevo): administra los servidores,
+  arma los adaptadores y expone el estado de cada uno (conectado, sin
+  conectar y por qué). Un servidor caído no impide que los demás funcionen.
+- **`backend/rag/mcp/McpConfig.kt`** (nuevo): la sección `mcp` de la config
+  (servidores declarados con id, transporte, comando/URL y variables de
+  entorno).
+- **El transporte todavía no está implementado** y la app lo dice: el conector
+  por defecto (`PendingMcpConnector`) responde "falta el cliente oficial" y
+  el estado de cada servidor lo muestra. Cuando llegue el SDK, sólo cambia el
+  conector: el resto de la app no se toca.
+
+#### Registro de herramientas con origen
+- `Tool` ahora declara su **origen** (`ToolOrigin.LOCAL` o `ToolOrigin.MCP`).
+- `ToolRegistry` puede filtrar por origen, agregar tools y **reemplazar** las
+  de un origen (las tools MCP se redescubren en caliente).
+
+#### Configuración v4
+- Secciones nuevas en `app-config.json`:
+  - `tools`: interruptor general y timeout por herramienta (60 s).
+  - `outputs`: carpeta de archivos del chat y topes de tamaño (5 MB por
+    archivo creado, 50 MB por descarga).
+  - `latex`: motor (vacío = autodetectar), timeout y tope del documento.
+  - `mcp`: servidores declarados.
+- **Migración automática** desde `configVersion: 3` (sin tocar la config a
+  mano): las secciones nuevas entran con los mismos valores que usaban las
+  constantes del código, así que una instalación migrada se comporta igual.
+- Los topes, el motor de LaTeX y la carpeta de salidas **dejan de ser
+  constantes**: ahora salen de la config y se editan en **Ajustes →
+  Herramientas**.
+- El `AgentLoop` ahora corta una herramienta que se cuelga (timeout
+  configurable) y le devuelve un error al modelo en vez de dejar el chat
+  esperando.
+
+#### Pantalla de herramientas
+- **Ajustes → Herramientas** (nuevo): interruptor de herramientas, timeout,
+  carpeta de salidas, topes de tamaño, motor de LaTeX y la lista de servidores
+  MCP (agregar, editar, habilitar, quitar).
+- **`/mcp`** (nuevo): muestra el estado de los servidores MCP y cuántas
+  herramientas MCP hay registradas.
+
+### 🧪 Tests
+- **Infraestructura de tests** (JUnit 5) en los cuatro módulos JVM, con
+  `useJUnitPlatform()` y AWT sin escritorio. Ver `docs/TESTING.md`.
+- **157 tests**, todos deterministas (sin red, sin esperas):
+  - backend (111): permisos, sanitizador, parser del protocolo por prompt,
+    `latex_compile` con un motor TeX falso, tools de archivos y web, registro
+    de tools, adaptador y administrador MCP, migración de configuración.
+  - frontend (33): segmentación de matemática y render, parser de markdown.
+  - llm-api (13): validación fail-fast de la config del LLM.
+
+### 🐛 Correcciones
+- **Sanitizador de tool calls**: la reparación de JSON nunca se probaba cuando
+  el parseo leniente tenía éxito pero la **forma** era inválida. Con comillas
+  curvas el parser leniente acepta `“tool”` como clave, la forma fallaba y la
+  reparación se saltaba: la llamada se rechazaba aunque el modelo la hubiera
+  escrito bien. Ahora, si la forma no valida, se prueba la versión reparada
+  antes de rendirse.
+
+### 🔒 Sin cambios de comportamiento visible
+- Sin `configVersion: 4`, una config v3 migrada se comporta **exactamente**
+  igual que antes (mismos topes, mismo motor autodetectado, mismos permisos).
+- Las herramientas MCP siguen pidiendo permiso como cualquier otra
+  (`/permitir-mcp`), apagado por defecto y por chat.
+- La carpeta de archivos del chat sigue siendo `app-home/outputs/<chat-id>/`.
+
 ## v0.9.0 (2026-10-20) — F5: matemática en el chat y compilación LaTeX → PDF
 
 ### ✨ Nuevas Características

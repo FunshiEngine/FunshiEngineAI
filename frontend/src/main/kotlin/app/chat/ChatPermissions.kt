@@ -27,9 +27,12 @@ import rag.config.AppPaths
  * del estado (mismo patrón que el resto de áreas).
  */
 
-/** Carpeta de salidas de un chat: `app-home/outputs/<chat-id>/`. */
+/** Carpeta de salidas de un chat: `app-home/<outputs.dir>/<chat-id>/`. */
 internal fun ChatViewModel.outputsDirFor(chatId: String): Path =
-    AppPaths.resolve("outputs/" + chatId.replace(Regex("[^A-Za-z0-9_-]"), "_"))
+    AppPaths.resolve(
+        (config.outputs.dir.trim().ifBlank { "outputs" }) +
+            "/" + chatId.replace(Regex("[^A-Za-z0-9_-]"), "_"),
+    )
 
 /** Categorías concedidas en un chat (vacío = todo apagado). */
 internal fun ChatViewModel.grantedCategories(chatId: String): Set<ToolCategory> =

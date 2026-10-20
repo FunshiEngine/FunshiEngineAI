@@ -91,7 +91,10 @@ internal fun JsonObject.str(key: String): String =
  * extensión tiene que estar en la lista permitida y el contenido no puede
  * pasar los 5 MB.
  */
-class CreateFileTool : Tool {
+class CreateFileTool(
+    /** Tope por archivo (configurable desde la sección `outputs` de la config). */
+    private val maxBytes: Long = MAX_FILE_BYTES,
+) : Tool {
 
     override val category = ToolCategory.FILES
 
@@ -125,9 +128,9 @@ class CreateFileTool : Tool {
         if (invalid != null) return@withContext ToolResult.Error(invalid)
 
         val bytes = content.toByteArray(Charsets.UTF_8)
-        if (bytes.size > MAX_FILE_BYTES) {
+        if (bytes.size > maxBytes) {
             return@withContext ToolResult.Error(
-                "El archivo es demasiado grande: ${bytes.size} bytes (máximo $MAX_FILE_BYTES). " +
+                "El archivo es demasiado grande: ${bytes.size} bytes (máximo $maxBytes). " +
                     "Dividilo en varios archivos o resumí el contenido.",
             )
         }
@@ -197,7 +200,10 @@ class CreateFileTool : Tool {
  * tope de 50 MB y bloqueo por ruta). El nombre sale del `Content-Disposition`
  * o de la URL; la extensión, si falta, se deduce del `Content-Type`.
  */
-class DownloadUrlTool : Tool {
+class DownloadUrlTool(
+    /** Tope por descarga (configurable desde la sección `outputs` de la config). */
+    private val maxBytes: Long = MAX_DOWNLOAD_BYTES,
+) : Tool {
 
     override val category = ToolCategory.FILES
 
@@ -259,10 +265,10 @@ class DownloadUrlTool : Tool {
             }
 
             val declared = response.headers().firstValueAsLong("content-length").orElse(-1L)
-            if (declared > MAX_DOWNLOAD_BYTES) {
+            if (declared > maxBytes) {
                 response.body().close()
                 return@withContext ToolResult.Error(
-                    "El archivo es demasiado grande: $declared bytes (máximo $MAX_DOWNLOAD_BYTES). " +
+                    "El archivo es demasiado grande: $declared bytes (máximo $maxBytes). " +
                         "Pedí una versión más chica.",
                 )
             }
@@ -283,7 +289,7 @@ class DownloadUrlTool : Tool {
             val size = lockFor(target).withLock {
                 val part = target.resolveSibling(target.fileName.toString() + ".part")
                 try {
-                    val written = writeLimited(response.body(), part, MAX_DOWNLOAD_BYTES)
+                    val written = writeLimited(response.body(), part, maxBytes)
                     Files.move(part, target, StandardCopyOption.REPLACE_EXISTING)
                     written
                 } catch (e: Exception) {

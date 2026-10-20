@@ -62,9 +62,23 @@ Implementación por fases (orden acordado):
 - [ ] **F6**: `GradioSpaceGateway` — modelo remoto vía HF Spaces. **CONGELADA**
       (2026-10-19): decisión pendiente, el usuario la dejó incompleta. Ver §10
       del plan (alternativa recomendada: HF Inference Providers).
-- [ ] **F7**: Contrato MCP (`McpConnection` + registro con origen LOCAL|MCP,
+- [x] **F7**: Contrato MCP (`McpConnection` + registro con origen LOCAL|MCP,
       sin SDK aún — sin servidores que conectar) + config v4 + pantalla de
       permisos + documentación (`ARCHITECTURE.md`, `CHANGES.md`).
+      **Implementado (2026-10-20)**: `backend/rag/mcp/McpToolAdapter.kt` con los
+      contratos (`McpConnection`, `McpToolDescriptor`, `McpToolResult`,
+      `McpContent`) y el adaptador que convierte una tool remota en una tool de
+      la app (nombre calificado `mcp__servidor__tool`, categoría MCP, origen
+      MCP, binarios como adjuntos). `backend/rag/mcp/McpManager.kt` administra
+      los servidores y expone su estado; `backend/rag/mcp/McpConfig.kt` define
+      la sección `mcp`. **El transporte NO está implementado**: el conector por
+      defecto lo dice con todas las letras y `/mcp` muestra el estado.
+      `Tool` declara su origen (`ToolOrigin`) y `ToolRegistry` filtra y
+      reemplaza tools por origen. Config **v4** con las secciones `tools`,
+      `outputs`, `latex` y `mcp` (migración automática desde v3, con los
+      mismos valores que las constantes de antes) y pantalla **Ajustes →
+      Herramientas** para editarlas. Los permisos MCP ya funcionaban
+      (`/permitir-mcp`, `/revocar-mcp`, `/permisos`).
 
 ---
 

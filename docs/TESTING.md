@@ -20,7 +20,7 @@ Sin argumentos: `test` corre los tests de los cuatro módulos (`llm-api`,
 | Módulo     | Ruta                          | Qué se testea                        |
 |------------|-------------------------------|--------------------------------------|
 | `llm-api`  | `llm-api/src/test/kotlin`     | Config del LLM, validación fail-fast |
-| `backend`  | `backend/src/test/kotlin`     | Tools, permisos, sanitizador, config  |
+| `backend`  | `backend/src/test/kotlin`     | Tools, permisos, sanitizador, MCP, config |
 | `frontend` | `frontend/src/test/kotlin`    | Markdown, render de math              |
 | `estructuras` | `estructuras/src/test/kotlin` | (reservado)                       |
 
@@ -50,15 +50,23 @@ existe dentro del build de cada módulo.
   sin permiso, la app escribe archivos o sale a internet sin consentimiento.
 - `ToolCallSanitizerTest` — el modelo devuelve JSON roto; el sanitizador
   decide si la llamada se ejecuta o vuelve como feedback.
-- `PromptToolParserTest` — el protocolo por prompt del modo LOCAL, including
+- `PromptToolParserTest` — el protocolo por prompt del modo LOCAL, incluido
   el stream partido en cualquier punto.
 - `LatexToolTest` — `latex_compile` con un motor falso: no hace falta TeX
   instalado para testear el camino feliz y el de error.
 - `FileToolsTest` — `create_file` sólo escribe dentro de la carpeta del chat.
 - `WebToolsTest` — el HTML que se le pasa al modelo sale limpio.
+- `ToolRegistryTest` — el registro distingue el origen de cada tool y puede
+  reemplazarla (las tools MCP se redescubren en caliente).
+- `McpToolAdapterTest` — una tool remota es una tool: nombre calificado,
+  categoría MCP, binarios como adjuntos y errores que vuelven como error.
+- `McpManagerTest` — el manager de servidores, con un conector falso (no
+  hace falta ningún servidor MCP de verdad).
+- `ConfigMigrationTest` — la migración v3 → v4 tiene que ser invisible: una
+  config vieja se comporta exactamente igual que antes.
 - `MathRenderTest` / `MarkdownTest` — lo que el modelo escribe se ve bien.
 - `LlmConfigTest` — la config rota se avisa antes de empezar a chatear.
 
 ## Cobertura actual
 
-109 tests (`llm-api` 13, `backend` 63, `frontend` 33).
+157 tests (`llm-api` 13, `backend` 111, `frontend` 33).

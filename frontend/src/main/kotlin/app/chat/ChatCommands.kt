@@ -29,6 +29,7 @@ internal fun ChatViewModel.handleCommand(raw: String) {
         "thinking" -> cmdThinking(arg)
         "power" -> cmdPower(arg)
         "tools" -> cmdTools()
+        "mcp" -> cmdMcp()
         "permitir-archivos" -> cmdGrant(ToolCategory.FILES)
         "permitir-web" -> cmdGrant(ToolCategory.WEB)
         "permitir-mcp" -> cmdGrant(ToolCategory.MCP)
@@ -52,11 +53,14 @@ internal fun ChatViewModel.cmdHelp(): String = """
     · `/thinking [off|low|medium|high]` — nivel de razonamiento del modelo.
     · `/power [low|medium|high]` — potencia de la respuesta (tokens de salida).
     · `/tools` — lista las herramientas que el modelo puede usar.
+    · `/mcp` — estado de los servidores MCP declarados.
     · `/permisos` — estado de los permisos de herramientas de este chat.
     · `/permitir-archivos` — concede permiso FILES en este chat.
     · `/permitir-web` — concede permiso WEB en este chat.
+    · `/permitir-mcp` — concede permiso MCP en este chat.
     · `/revocar-archivos` — quita el permiso FILES de este chat.
     · `/revocar-web` — quita el permiso WEB de este chat.
+    · `/revocar-mcp` — quita el permiso MCP de este chat.
 
     Mientras el modelo responde podés seguir escribiendo: los mensajes
     se encolan y se envían juntos, uno debajo del otro, al terminar.
@@ -135,6 +139,9 @@ internal fun ChatViewModel.cmdTools(): String {
     if (tools.isEmpty) return "No hay herramientas registradas todavía."
     return "Herramientas que puede usar el modelo (el ${if (config.llm.mode == LlmMode.REMOTE) "protocolo OpenAI nativo" else "protocolo por prompt"}):\n\n" + tools.describe()
 }
+
+/** /mcp — estado de los servidores MCP declarados en la configuración. */
+internal fun ChatViewModel.cmdMcp(): String = mcpStatusText()
 
 /* ---------------------------------------------------------------------------
  * Permisos de herramientas (F3): por categoría y por chat.

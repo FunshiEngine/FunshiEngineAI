@@ -81,6 +81,9 @@ fun SettingsPane(vm: ChatViewModel) {
                 }
             }
 
+            // ---------- Herramientas ----------
+            ToolsSettings(vm)
+
             Spacer(Modifier.height(8.dp))
         }
 

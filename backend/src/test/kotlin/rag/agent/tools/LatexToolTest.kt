@@ -65,7 +65,7 @@ class LatexToolTest {
     @Test
     fun `sin motor instalado falla rapido con la guia de instalacion`() = runTest {
         val dir = Files.createTempDirectory("latex-test-")
-        val tool = LatexCompileTool { null }
+        val tool = LatexCompileTool(engineFinder = { null })
         val result = tool.execute(args("document" to "\\section{Hola}"), ctx(dir))
         assertTrue(result is ToolResult.Error)
         val message = (result as ToolResult.Error).message
@@ -77,7 +77,7 @@ class LatexToolTest {
     @Test
     fun `un motor desconocido se rechaza antes de tocar el disco`() = runTest {
         val dir = Files.createTempDirectory("latex-test-")
-        val tool = LatexCompileTool { null }
+        val tool = LatexCompileTool(engineFinder = { null })
         val result = tool.execute(
             args("document" to "x", "engine" to "latex"),
             ctx(dir),
@@ -90,7 +90,7 @@ class LatexToolTest {
     @Test
     fun `el motor pedido que no esta instalado dice cual falta`() = runTest {
         val dir = Files.createTempDirectory("latex-test-")
-        val tool = LatexCompileTool { null }
+        val tool = LatexCompileTool(engineFinder = { null })
         val result = tool.execute(
             args("document" to "x", "engine" to "xelatex"),
             ctx(dir),
@@ -103,7 +103,7 @@ class LatexToolTest {
     @Test
     fun `un documento vacio se rechaza`() = runTest {
         val dir = Files.createTempDirectory("latex-test-")
-        val tool = LatexCompileTool { null }
+        val tool = LatexCompileTool(engineFinder = { null })
         val result = tool.execute(args("document" to "   "), ctx(dir))
         assertTrue(result is ToolResult.Error)
         dir.toFile().deleteRecursively()
@@ -114,7 +114,7 @@ class LatexToolTest {
         val dir = Files.createTempDirectory("latex-test-")
         val engineDir = Files.createTempDirectory("latex-engine-")
         val engine = fakeEngine(engineDir, "pdflatex", exitCode = 0)
-        val tool = LatexCompileTool { if (it == "pdflatex") engine else null }
+        val tool = LatexCompileTool(engineFinder = { if (it == "pdflatex") engine else null })
 
         val result = tool.execute(
             args("document" to "\\section{Hola}\nCon acentos.", "name" to "informe"),
@@ -146,7 +146,7 @@ class LatexToolTest {
         val dir = Files.createTempDirectory("latex-test-")
         val engineDir = Files.createTempDirectory("latex-engine-")
         val engine = fakeEngine(engineDir, "pdflatex", exitCode = 0)
-        val tool = LatexCompileTool { if (it == "pdflatex") engine else null }
+        val tool = LatexCompileTool(engineFinder = { if (it == "pdflatex") engine else null })
         val completo = "\\documentclass{book}\n\\begin{document}\nHola\n\\end{document}"
 
         val result = tool.execute(args("document" to completo), ctx(dir))
@@ -164,7 +164,7 @@ class LatexToolTest {
         val dir = Files.createTempDirectory("latex-test-")
         val engineDir = Files.createTempDirectory("latex-engine-")
         val engine = fakeEngine(engineDir, "pdflatex", exitCode = 0)
-        val tool = LatexCompileTool { if (it == "pdflatex") engine else null }
+        val tool = LatexCompileTool(engineFinder = { if (it == "pdflatex") engine else null })
 
         val result = tool.execute(
             args("document" to "x", "name" to "../../etc/passwd"),
@@ -184,7 +184,7 @@ class LatexToolTest {
         val dir = Files.createTempDirectory("latex-test-")
         val engineDir = Files.createTempDirectory("latex-engine-")
         val engine = fakeEngine(engineDir, "pdflatex", exitCode = 1, output = "! Undefined control sequence.")
-        val tool = LatexCompileTool { if (it == "pdflatex") engine else null }
+        val tool = LatexCompileTool(engineFinder = { if (it == "pdflatex") engine else null })
 
         val result = tool.execute(args("document" to "\\foo"), ctx(dir))
         assertTrue(result is ToolResult.Error)
@@ -200,7 +200,7 @@ class LatexToolTest {
         val dir = Files.createTempDirectory("latex-test-")
         val engineDir = Files.createTempDirectory("latex-engine-")
         val engine = fakeEngine(engineDir, "pdflatex", exitCode = 0)
-        val tool = LatexCompileTool { if (it == "pdflatex") engine else null }
+        val tool = LatexCompileTool(engineFinder = { if (it == "pdflatex") engine else null })
 
         tool.execute(args("document" to "x"), ctx(dir))
 

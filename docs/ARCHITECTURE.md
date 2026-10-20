@@ -58,11 +58,12 @@ en el request `tools[]`; la dependencia va en un solo sentido.
 
 | Paquete | Contenido |
 |---------|-----------|
-| `rag.config` | `AppConfig`, `AppPaths`, `RagConfig`, perfiles de color |
+| `rag.config` | `AppConfig`, `AppPaths`, `RagConfig`, perfiles de color, `ToolsConfig`/`OutputsConfig`/`LatexConfig` (F7) |
 | `rag.store` | `ChatStore`: persistencia del árbol de chats (`config/chats.json`) |
 | `rag.retrieval` | `Chunker`, `Bm25Index`, `KnowledgeBase`, `Sources`, modelos de documento |
 | `rag.engine` | `RagEngine`: arma el prompt (system + contexto + historial) y responde |
 | `rag.agent` | Tool calling: `Tool`, `ToolResult`, `ToolContext`, `ToolRegistry`, `AgentLoop`, `PromptToolParser`, `ToolCallSanitizer`, `ToolPermissions`, `tools/GetTimeTool`, `tools/FileTools`, `tools/WebTools`, `tools/LatexTool` |
+| `rag.mcp` | MCP (F7): `McpConnection` (contrato), `McpToolAdapter`, `McpManager`, `McpConfig` |
 
 ### `frontend` — UI
 
@@ -71,8 +72,8 @@ en el request `tools[]`; la dependencia va en un solo sentido.
 | `app` | `Main` (ventana, tema), `NavigationRail` (sidebar colapsable) |
 | `app.core` | Tipos compartidos: `UiState.kt` (`Screen`, `UiMessage`, `UiToolCall`, `UiProgress`), `ChatTree.kt` (`ChatNode`, `ChatRow`, `ChatTree`) |
 | `app.ui` | Render de contenido: `Markdown.kt` (parser + `MarkdownText`), `CodeBlock.kt` (resaltado, copiar, guardar), `MathRender.kt` (F5: TeX → imagen con JLaTeXMath) |
-| `app.chat` | La pantalla de chat: `ChatViewModel` + áreas, `ChatCommands`, `ChatMessages`, `ChatPane`, `ChatSidebar`, `MessageBubble`, `ToolCallCard`, `ComposerBar`, `ChatScreen`, `ChatScrollbarAdapter`, `LoadingPane` |
-| `app.screens` | `ModelsScreen`, `ApisScreen`, `SettingsPane`, `SettingsComponents` |
+| `app.chat` | La pantalla de chat: `ChatViewModel` + áreas, `ChatCommands`, `ChatMessages`, `ChatPane`, `ChatSidebar`, `MessageBubble`, `ToolCallCard`, `ComposerBar`, `ChatScreen`, `ChatScrollbarAdapter`, `LoadingPane`, `ChatTools` (F7) |
+| `app.screens` | `ModelsScreen`, `ApisScreen`, `SettingsPane`, `SettingsComponents`, `ToolsSettings` (F7) |
 
 ---
 
@@ -361,6 +362,67 @@ intentar.
 
 ---
 
+## MCP: herramientas de servidores externos (F7)
+
+La app puede hablar con servidores MCP (Model Context Protocol) para usar
+herramientas que no están implementadas en la app. **En esta ronda está
+preparado el contrato, no el transporte**: falta el SDK oficial de Kotlin, así
+que los servidores se declaran pero no se conectan, y la app lo dice con
+todas las letras.
+
+### El contrato (`rag.mcp`)
+
+```kotlin
+interface McpConnection {
+    val serverId: String
+    val displayName: String
+    suspend fun listTools(): List<McpToolDescriptor>
+    suspend fun callTool(name: String, args: JsonObject): McpToolResult
+    suspend fun close()
+}
+```
+
+`McpToolDescriptor` (nombre, descripción, JSON Schema), `McpToolResult`
+(`Ok` con contenido / `Error`) y `McpContent` (`Text` o `Binary` en base64).
+
+### La tool remota es una tool
+
+`McpToolAdapter` implementa `Tool`, así que el resto de la app **no distingue
+el origen**:
+
+| Detalle | Decisión |
+|---------|----------|
+| Nombre | Calificado: `mcp__<servidor>__<herramienta>` (dos servidores pueden exponer tools homónimas) |
+| Categoría | `MCP` → pide permiso (`/permitir-mcp`), apagado por defecto y por chat |
+| Origen | `ToolOrigin.MCP` (para listarlas por separado; no cambia la ejecución) |
+| Binarios | Se guardan en la carpeta del chat y aparecen como adjuntos |
+| Errores | Del transporte o del servidor vuelven como `ToolResult.Error`: el modelo los ve y puede reintentar |
+
+### El seam del transporte
+
+`McpManager` pide conexiones al `McpConnector` y arma los adaptadores:
+
+```
+McpManager.refresh()
+    -> por cada servidor declarado (y habilitado):
+         connector.connect(server)   <-- EL seam: aca va el SDK oficial
+         connection.listTools()     -> adaptadores
+    -> estado por servidor (conectado / no conectado / por qué)
+```
+
+`PendingMcpConnector` es el conector por defecto: responde "falta el cliente
+oficial". Un servidor caído no impide que los demás funcionen. Cuando llegue
+el SDK, **sólo cambia el conector**: el `ChatViewModel` es el único lugar que
+lo crea.
+
+### Dónde se ve
+
+- `/mcp` — estado de los servidores y cuántas tools MCP hay registradas.
+- **Ajustes → Herramientas** — declarar, editar, habilitar y quitar servidores.
+- La sección `mcp` de `app-config.json`.
+
+---
+
 ## Flujo de Datos Principal
 
 ```
@@ -443,7 +505,7 @@ Archivo: `<app-home>/config/app-config.json`
 ```json
 {
   "llm": {
-    "configVersion": 3,
+    "configVersion": 4,
     "mode": "LOCAL",
     "hfRepo": "unsloth/Phi-4-mini-instruct-GGUF",
     "hfFile": "Phi-4-mini-instruct-Q4_K_M.gguf",
@@ -458,17 +520,26 @@ Archivo: `<app-home>/config/app-config.json`
     "internalDocsDirs": ["internal-docs"],
     "chunkSize": 1200,
     "topK": 5
-  }
+  },
+  "tools": { "enabled": true, "timeoutMs": 60000 },
+  "outputs": { "dir": "outputs", "maxFileMb": 5, "maxDownloadMb": 50 },
+  "latex": { "engine": "", "timeoutMs": 60000, "maxDocumentKb": 1024 },
+  "mcp": { "servers": [] }
 }
 ```
 
 - Carga: `AppConfig.loadOrCreate()` (crea defaults + system prompt + carpeta docs si es la
   primera vez).
 - Persistencia: `config.save()` atómica (JSON pretty-print).
-- **Migración por `configVersion`**: la versión actual es **3**. v1→v2: `buildFromSource` pasa a
+- **Migración por `configVersion`**: la versión actual es **4**. v1→v2: `buildFromSource` pasa a
   `true` y se eliminan las APIs localhost prefijadas. v2→v3: `chatTimeoutMs = 0` (sin límite de
-  tiempo por respuesta).
-- La v4 (permisos por categoría + MCP) llega con F7.
+  tiempo por respuesta). v3→v4: se agregan las secciones `tools`, `outputs`, `latex` y `mcp`,
+  **con los mismos valores que usaban las constantes del código**: una instalación migrada se
+  comporta exactamente igual que antes.
+- Las secciones `tools`, `outputs` y `latex` **no son decorativas**: los lee el código (topes de
+  tamaño, motor de LaTeX, timeout por herramienta) y se editan en **Ajustes → Herramientas**.
+- La sección `mcp` declara los servidores MCP. El transporte todavía no está implementado: se
+  declaran y quedan sin conectar (el estado lo muestra `/mcp`).
 
 El árbol de chats vive aparte, en `<app-home>/config/chats.json` (esquema recursivo
 `StoredNode`: carpetas con hijos y chats con mensajes; las tarjetas de herramientas se guardan en

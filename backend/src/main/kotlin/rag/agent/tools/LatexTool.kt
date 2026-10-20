@@ -34,9 +34,16 @@ import rag.agent.ToolResult
  * @param engineFinder resuelve el nombre de un motor (`pdflatex`, `xelatex`) a
  *   un comando ejecutable, o `null` si no está instalado. Es inyectable para
  *   poder probar la herramienta sin TeX en la máquina.
+ * @param preferredEngine motor forzado por la configuración (vacío = el que
+ *   pida el modelo o el primero que esté instalado).
+ * @param timeoutSeconds segundos que puede tardar la compilación.
+ * @param maxDocumentBytes tope del documento LaTeX.
  */
 class LatexCompileTool(
     private val engineFinder: (String) -> String? = { command -> findOnPath(command) },
+    private val preferredEngine: String = "",
+    private val timeoutSeconds: Long = TIMEOUT_SECONDS,
+    private val maxDocumentBytes: Long = MAX_DOCUMENT_BYTES,
 ) : Tool {
 
     override val category = ToolCategory.FILES
@@ -71,17 +78,24 @@ class LatexCompileTool(
             return@withContext ToolResult.Error("Falta el documento LaTeX a compilar.")
         }
         val bytes = document.toByteArray(StandardCharsets.UTF_8)
-        if (bytes.size > MAX_DOCUMENT_BYTES) {
+        if (bytes.size > maxDocumentBytes) {
             return@withContext ToolResult.Error(
-                "El documento es demasiado grande: ${bytes.size} bytes (máximo $MAX_DOCUMENT_BYTES).",
+                "El documento es demasiado grande: ${bytes.size} bytes (máximo $maxDocumentBytes).",
             )
         }
 
-        // Motor: el que pidió el modelo (si vale) o el primero que esté instalado.
+        // Motor: el que pidió el modelo (si vale), el forzado por la config, o
+        // el primero que esté instalado.
         val requested = args.str("engine").trim().lowercase()
         if (requested.isNotEmpty() && requested !in ENGINES) {
             return@withContext ToolResult.Error(
                 "Motor desconocido: `$requested`. Usá `pdflatex` o `xelatex`.",
+            )
+        }
+        val forced = preferredEngine.trim().lowercase()
+        if (forced.isNotEmpty() && forced !in ENGINES) {
+            return@withContext ToolResult.Error(
+                "El motor configurado (`$forced`) no es válido. Usá `pdflatex` o `xelatex`.",
             )
         }
         val engineLabel: String
@@ -94,6 +108,16 @@ class LatexCompileTool(
                 )
             }
             engineLabel = requested
+            engineCommand = found
+        } else if (forced.isNotEmpty()) {
+            val found = engineFinder(forced)
+            if (found == null) {
+                return@withContext ToolResult.Error(
+                    "El motor `$forced` (configurado en LaTeX) no está instalado en el sistema. " +
+                        installGuide(forced),
+                )
+            }
+            engineLabel = forced
             engineCommand = found
         } else {
             val found = ENGINES.firstNotNullOfOrNull { engineFinder(it) }
@@ -225,7 +249,7 @@ class LatexCompileTool(
         reader.start()
 
         val finished = try {
-            process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
             process.destroyForcibly()
@@ -234,7 +258,7 @@ class LatexCompileTool(
 
         if (!finished) {
             process.destroyForcibly()
-            return EngineRun(null, "La compilación tardó más de $TIMEOUT_SECONDS segundos y se cortó.")
+            return EngineRun(null, "La compilación tardó más de $timeoutSeconds segundos y se cortó.")
         }
 
         // El lector puede tener pendiente el final del log.

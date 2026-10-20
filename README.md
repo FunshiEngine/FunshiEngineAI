@@ -51,9 +51,14 @@ referencia de API. |
   (adjunto listo para abrir o guardar). Si no hay motor de TeX en el sistema, la herramienta
   avisa con una guía de instalación en vez de fallar en silencio.
 - **Permisos por categoría**: están **apagados por defecto** y se conceden **por chat**
-  (`/permitir-archivos`, `/permitir-web`, `/permisos`, `/revocar-*`). Sin permiso concedido, la
-  herramienta pide confirmación con un diálogo ("Permitir siempre / Una vez / Cancelar") y los
-  archivos que produce llegan al chat como **adjuntos** que se pueden abrir o guardar.
+  (`/permitir-archivos`, `/permitir-web`, `/permitir-mcp`, `/permisos`, `/revocar-*`). Sin permiso
+  concedido, la herramienta pide confirmación con un diálogo ("Permitir siempre / Una vez /
+  Cancelar") y los archivos que produce llegan al chat como **adjuntos** que se pueden abrir o
+  guardar.
+- **MCP preparado**: el contrato del protocolo (conexión, adaptador, registro con origen) ya está
+  escrito y probado, y los servidores se declaran en **Ajustes → Herramientas**. Falta el cliente
+  MCP en sí (SDK oficial): por ahora los servidores quedan declarados y sin conectar, y `/mcp`
+  muestra el estado con el motivo.
 
 ## Regla central: no inventar sin referencia
 
@@ -77,7 +82,7 @@ Todo se configura en `app-home/config/app-config.json` (se crea solo en el prime
 ```jsonc
 {
   "llm": {
-    "configVersion": 3,
+    "configVersion": 4,
     "mode": "LOCAL",                  // LOCAL (llama-server) | REMOTE (API compatible OpenAI)
     "remoteBaseUrl": "http://localhost:11434/v1",
     "apiKey": "",
@@ -108,9 +113,33 @@ Todo se configura en `app-home/config/app-config.json` (se crea solo en el prime
     "systemPromptFile": "config/system_prompt.md",
     "chunkSize": 1200,
     "topK": 5
+  },
+  "tools": {
+    "enabled": true,                 // interruptor general de herramientas
+    "timeoutMs": 60000               // timeout por herramienta (0 = sin límite)
+  },
+  "outputs": {
+    "dir": "outputs",                // carpeta de archivos (dentro de app-home)
+    "maxFileMb": 5,                  // tope de create_file
+    "maxDownloadMb": 50              // tope de download_url
+  },
+  "latex": {
+    "engine": "",                    // vacío = autodetectar (pdflatex, luego xelatex)
+    "timeoutMs": 60000,              // timeout de compilación
+    "maxDocumentKb": 1024            // tope del documento
+  },
+  "mcp": {
+    "servers": [                     // servidores MCP declarados (el cliente todavía no está)
+      { "id": "docs", "name": "Documentación", "transport": "stdio",
+        "command": "mi-servidor-mcp", "args": [], "env": {}, "enabled": true }
+    ]
   }
 }
 ```
+
+Las secciones `tools`, `outputs`, `latex` y `mcp` se editan también desde **Ajustes →
+Herramientas** (la app las guarda al instante). Una config v3 se migra sola a la v4 y queda
+exactamente igual de comportamiento.
 
 Los chats (carpetas, mensajes, tarjetas de herramientas y adjuntos) se guardan aparte, en
 `app-home/config/chats.json`. Los archivos que crea o descarga el modelo van a
@@ -163,10 +192,14 @@ En desarrollo todo (config, modelos, docs internas) vive en `<raíz>/app-home`.
 - [x] **F5 — LaTeX**: las fórmulas `$…$` y `$$…$$` se dibujan en el chat (JLaTeXMath, offline) y
       la tool `latex_compile` convierte un documento LaTeX en PDF (adjunto), con fail-fast y guía
       de instalación si no hay motor de TeX.
+- [x] **F7 — MCP preparado**: contrato (`McpConnection`), adaptador, registro con origen
+      `LOCAL|MCP`, configuración v4 (`tools`, `outputs`, `latex`, `mcp`) y pantalla **Ajustes →
+      Herramientas**. Falta el cliente MCP en sí (SDK oficial).
 - [x] **Arquitectura modular**: un paquete por área en los tres módulos.
-- [ ] **F6–F7** (en curso, plan en `docs/PLAN-INTEGRACION.md`): HF Spaces (Gradio, **congelada**) y
-      MCP preparado (contrato de conexión + registro con origen).
+- [x] **Tests**: 157 tests deterministas con JUnit 5 (`./gradlew test`), reglas en
+      `docs/TESTING.md`.
+- [ ] **F6 — HF Spaces (Gradio)**: **congelada**, decisión pendiente (ver §10 del plan).
+- [ ] **F8 — cliente MCP real** (SDK oficial) sobre stdio/HTTP.
 - [ ] Manual de uso del FunshiEngine como fuente RAG.
 - [ ] Verificador determinista de citas (script post-generación).
-- [ ] Tests unitarios del `ChatViewModel` (cola, arranque, cancelación) y de integración de
-      `KnowledgeBase.sync()` + `RagEngine.ask()`.
+- [ ] Tests de integración de `KnowledgeBase.sync()` + `RagEngine.ask()`.
