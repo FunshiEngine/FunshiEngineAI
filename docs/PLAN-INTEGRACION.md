@@ -36,7 +36,7 @@ Objetivo: convertir el chat en un **asistente con herramientas**:
 | Tool-calling | **Híbrido por motor**: REMOTE OpenAI-compatible → nativo (`tool_calls` en SSE); LOCAL (llama-server) y HF Spaces Gradio → guiado por prompt (JSON delimitado extraído del stream). Un solo `AgentLoop` para todos. |
 | Permisos | **Por categoría, default off**: `/permitir-web`, `/permitir-archivos` (y `/permitir-mcp` futuro) habilitan su categoría **sólo en el chat activo**; por defecto todo pide confirmación en UI. `/permisos` muestra el estado. |
 | Búsqueda web | **DuckDuckGo** (API sin clave). Interfaz `SearchProvider` para agregar otros luego. |
-| Modelo remoto | **HF: pendiente de decisión** (F6 congelada; ver `docs/PLAN-INTEGRACION.md` §10). |
+| Modelo remoto | **HF: pendiente de decisión** (F6 congelada; ver `docs/PLAN-INTEGRACION.md` §11). |
 | LaTeX | **Math en chat + documentos LaTeX → PDF** (requiere TinyTeX/MiKTeX externo; la app lo autodetecta y ofrece guía de instalación). |
 | Formatos | Extensiones de archivo reales por lenguaje; exportar bloque/mensaje como archivo con su extensión. |
 | MCP | Sólo **arquitectura preparada** ahora (contrato + adaptador + config); ensamblaje del SDK cuando existan servidores a conectar. |
@@ -384,7 +384,62 @@ va a usar el cliente cuando llegue.
 
 ---
 
-## 10. Sección H — HF Spaces Gradio (gateway remoto) — PENDIENTE, NO DECIDIDO
+## 10. Sección I — Verificador determinista de citas (F9)
+
+**Problema.** La regla central del proyecto es "no inventar sin referencia": en
+modo Docs el modelo tiene que responder sólo con el contexto recuperado y citar
+sus fuentes. Pero eso es una **instrucción blanda**: un modelo chico puede
+parafrasear, exagerar o inventar (sobre todo nombres propios y números).
+
+**Solución.** Una comprobación programática **post-generación**: cuando la
+respuesta termina, cada cita `[n]` se abre y se compara con la fuente `n`.
+
+Es **determinista**: no llama al modelo ni a la red. Es una función pura
+(`rag/engine/CitationVerifier.kt`), así que se testea al 100% y nunca falla por
+culpa de la red.
+
+### Criterios (en orden)
+
+| Criterio | Qué exige | Por qué |
+|----------|-----------|---------|
+| Literal | El fragmento citado aparece en la fuente | El caso normal. |
+| Sin detalles inventados | Los nombres propios y los números (2+ dígitos o con decimal) del fragmento aparecen en la fuente | Separa la paráfrasis de la invención: "usa DirectX 12" no está respaldado por una fuente que dice "usa Vulkan". |
+| Paráfrasis | ≥ 50% de las palabras significativas del fragmento aparecen en la fuente | Acepta paráfrasis honestas; admite plurales y variaciones de verbo ("renderiza" / "renderizar"). |
+
+Si ninguna se cumple, la cita queda **sin respaldo**: no se descarta la
+respuesta (decide el usuario), pero queda marcada.
+
+### Normalización (para comparar sin falsos positivos)
+
+Minúsculas, sin acentos, sin puntuación, camel case partido ("DirectX" →
+"direct x"), espacios colapsados. La misma normalización se aplica a la fuente
+y al fragmento: la comparación es justa.
+
+### Salida
+
+- `CitationCheck` — una por cita: el fragmento, la fuente, si está respaldada y
+  por qué no lo está.
+- `CitationReport` — el resumen: citas válidas, índices que apuntan a una fuente
+  inexistente y fuentes recuperadas que el modelo no usó.
+
+### En la UI
+
+Al terminar cada respuesta en modo Docs, el chat verifica las citas y la
+burbuja muestra el distintivo: **"Citas verificadas (n)"** o cuántas quedan
+**sin respaldo** (y cuántas apuntan a una fuente inexistente). El resultado se
+guarda con el mensaje (`StoredCitation`) para que siga visible al reabrir el
+chat.
+
+### Fuera de alcance (por ahora)
+
+- No se regenera la respuesta cuando falla la verificación: el verificador
+  informa, no corrige. Reintentar es una decisión de producto (y multiplica el
+  costo de tokens).
+- No se verifican citas de respuestas en modo General: no hay fuentes.
+
+---
+
+## 11. Sección H — HF Spaces Gradio (gateway remoto) — PENDIENTE, NO DECIDIDO
 
 **Estado: INCOMPLETO (2026-10-19).** El usuario eligió originalmente "HF Spaces
 (Gradio)" pero al ver la explicación del riesgo pidió dejarlo incompleto. La F6
@@ -410,7 +465,7 @@ Notas por si se retoma:
 
 ---
 
-## 11. Arquitectura objetivo (archivos nuevos/modificados)
+## 12. Arquitectura objetivo (archivos nuevos/modificados)
 
 Rutas actualizadas a la estructura modular (`docs/ARCHITECTURE.md`); lo que ya existe
 (F1, F2) va marcado con ✅.
@@ -432,10 +487,11 @@ backend/
   rag/mcp/McpManager.kt             ✅ manager de servidores + estado (F7)
   rag/mcp/McpConfig.kt              ✅ sección `mcp` de la config (F7)
   rag/config/ToolsConfig.kt         ✅ secciones tools/outputs/latex (F7)
+  rag/engine/CitationVerifier.kt    ✅ verificación de citas post-generación (F9)
 llm-api/
   llm/api/LlmGateway.kt             ✅ + LlmChunk tipado y tools en chatStream
   llm/api/Tools.kt                  ✅ ToolSpec (catálogo para el request)
-  llm/api/GradioSpaceGateway.kt     # HF Spaces (§10)
+  llm/api/GradioSpaceGateway.kt     # HF Spaces (§11)
 frontend/
   app/ui/Markdown.kt                ✅ renderer
   app/ui/MathRender.kt              ✅ F5a: JLaTeXMath -> imagen en memoria
@@ -447,6 +503,7 @@ frontend/
   app/chat/ChatPermissions.kt       ✅ estado de permisos + handshake con la UI
   app/chat/PermissionDialog.kt      ✅ diálogo "¿Permitir?"
   app/chat/AttachmentCard.kt        ✅ adjuntos descargables
+  app/chat/MessageBubble.kt          ✅ burbuja del mensaje + distintivo de citas (F9)
   app/screens/ToolsSettings.kt      ✅ Ajustes → Herramientas (F7)
 ```
 
@@ -456,7 +513,7 @@ constantes del código, así que una instalación migrada se comporta igual.
 
 ---
 
-## 12. Fases de implementación
+## 13. Fases de implementación
 
 | Fase | Contenido | Dependencias | Estado |
 |------|-----------|--------------|--------|
@@ -465,16 +522,17 @@ constantes del código, así que una instalación migrada se comporta igual.
 | **F3** | `create_file` + `download_url` + AttachmentCard + permisos FILES + `/permitir-archivos` | F1 | ✅ 2026-10-20 |
 | **F4** | `web_search` (DuckDuckGo + respaldo Wikipedia) + `web_fetch` + permisos WEB + `/permitir-web` + escenario E2E del PDF | F1, F3 | ✅ 2026-10-20 |
 | **F5** | Math con JLaTeXMath + `latex_compile` → PDF (autodetección TinyTeX/MiKTeX) | F2, F3 | ✅ 2026-10-20 |
-| **F6** | `GradioSpaceGateway` para HF Spaces | **CONGELADA** — decisión pendiente (ver §10) | — |
+| **F6** | `GradioSpaceGateway` para HF Spaces | **CONGELADA** — decisión pendiente (ver §11) | — |
 | **F7** | Contrato MCP + registro con orígenes + config v4 + pantalla de permisos + documentación | F1–F4 | ✅ 2026-10-20 |
 | **F8** | Cliente MCP real (SDK oficial) sobre stdio/HTTP | F7 | Pendiente |
-| **T** | Infraestructura de tests (JUnit 5) + 247 tests deterministas | — | ✅ 2026-10-20 |
+| **F9** | Verificador determinista de citas (post-generación) + distintivo en el chat | F1 | ✅ 2026-10-20 |
+| **T** | Infraestructura de tests (JUnit 5) + 280 tests deterministas | — | ✅ 2026-10-20 |
 
 F2 es independiente de F1 y puede hacerse en paralelo.
 
 ---
 
-## 13. Riesgos
+## 14. Riesgos
 
 | Riesgo | Impacto | Mitigación |
 |--------|---------|------------|
@@ -487,7 +545,7 @@ F2 es independiente de F1 y puede hacerse en paralelo.
 
 ---
 
-## 14. Reglas de estilo (heredadas de `.agentes/`)
+## 15. Reglas de estilo (heredadas de `.agentes/`)
 
 - Sin emojis en código, strings, comentarios ni UI (iconos Material o símbolos
   Unicode simples si hace falta).

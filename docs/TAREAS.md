@@ -60,7 +60,7 @@ Implementación por fases (orden acordado):
       adjuntos. **Fail-fast**: sin motor instalado devuelve un error con la
       guía (TeX Live / MiKTeX) en vez de un PDF vacío.
 - [ ] **F6**: `GradioSpaceGateway` — modelo remoto vía HF Spaces. **CONGELADA**
-      (2026-10-19): decisión pendiente, el usuario la dejó incompleta. Ver §10
+      (2026-10-19): decisión pendiente, el usuario la dejó incompleta. Ver §11
       del plan (alternativa recomendada: HF Inference Providers).
 - [x] **F7**: Contrato MCP (`McpConnection` + registro con origen LOCAL|MCP,
       sin SDK aún — sin servidores que conectar) + config v4 + pantalla de

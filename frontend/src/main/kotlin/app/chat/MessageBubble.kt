@@ -3,12 +3,16 @@ package app.chat
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.core.UiCitation
 import app.core.UiMessage
 import app.ui.MarkdownText
 
@@ -80,6 +84,9 @@ internal fun MessageBubble(
                                 Text("Fuentes:", fontSize = 11.sp)
                                 m.sources.forEachIndexed { i, s -> Text("[${i + 1}] $s", fontSize = 11.sp) }
                             }
+                            // Verificación de las citas (F9): si lo que dice la
+                            // respuesta está respaldado por la documentación.
+                            m.citation?.let { CitationBadge(it) }
                             // Archivos que el modelo creó o descargó (F3).
                             if (m.attachments.isNotEmpty()) {
                                 Spacer(Modifier.height(8.dp))
@@ -117,5 +124,40 @@ internal fun MessageBubble(
                 }
             }
         }
+    }
+}
+
+/**
+ * Distintivo de verificación de citas (F9).
+ *
+ * En modo Docs cada `[n]` de la respuesta se comprueba contra la fuente `n`.
+ * Si todo está respaldado, se dice que las citas están verificadas; si algo
+ * no lo está, se avisa cuántas citas no tienen respaldo (o apuntan a una
+ * fuente que no existe).
+ */
+@Composable
+private fun CitationBadge(c: UiCitation) {
+    val ok = c.ok
+    val color = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+    val texto = when {
+        c.total == 0 -> "Sin citas"
+        ok -> "Citas verificadas (${c.total})"
+        else -> buildString {
+            append("${c.unsupported} cita${if (c.unsupported == 1) "" else "s"} sin respaldo")
+            if (c.unknown > 0) append(" · ${c.unknown} sin fuente")
+        }
+    }
+    Row(
+        Modifier.padding(top = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Icon(
+            if (ok) Icons.Filled.Verified else Icons.Filled.WarningAmber,
+            contentDescription = null,
+            modifier = Modifier.size(14.dp),
+            tint = color,
+        )
+        Text(texto, fontSize = 11.sp, color = color)
     }
 }

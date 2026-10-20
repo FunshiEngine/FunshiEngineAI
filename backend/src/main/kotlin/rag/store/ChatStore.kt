@@ -28,6 +28,21 @@ data class StoredAttachment(
     val mime: String = "",
 )
 
+/**
+ * Verificación de las citas de una respuesta (F9): cuántas están respaldadas
+ * por su fuente y cuántas no. Se guarda con el mensaje para que el distintivo
+ * siga ahí al reabrir el chat.
+ */
+@Serializable
+data class StoredCitation(
+    /** Citas respaldadas por la fuente que citan. */
+    val verified: Int = 0,
+    /** Citas cuya fuente existe pero no respalda lo que se dice. */
+    val unsupported: Int = 0,
+    /** Citas que apuntan a una fuente que no existe. */
+    val unknown: Int = 0,
+)
+
 /** Mensaje persistido de un chat. */
 @Serializable
 data class StoredMessage(
@@ -38,6 +53,8 @@ data class StoredMessage(
     val toolCards: List<StoredToolCall> = emptyList(),
     /** Archivos generados o descargados en esta respuesta (opcional). */
     val attachments: List<StoredAttachment> = emptyList(),
+    /** Verificación de las citas (sólo en modo Docs, opcional). */
+    val citation: StoredCitation? = null,
 )
 
 /**

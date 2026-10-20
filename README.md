@@ -63,17 +63,22 @@ referencia de API. |
 ## Regla central: no inventar sin referencia
 
 El system prompt obliga a responder solo con el bloque `CONTEXTO` recuperado por el RAG y a
-decir "No encuentro eso en la documentación" cuando falta. Para hacer esto **determinista**
-en vez de depender de la buena voluntad del modelo, la idea es un verificador post-generación:
+decir "No encuentro eso en la documentación" cuando falta. Eso es una instrucción blanda: un
+modelo chico puede parafrasear, exagerar o inventar. Por eso hay un **verificador
+post-generación** que lo convierte en una comprobación programática:
 
 1. La respuesta declara sus fuentes (citas `[n]` → chunk indexado, ya existe el mapeo).
-2. Un script re-abre cada fuente citada y comprueba que la cita (o su fragmento) existe
-   **literalmente** en el chunk/documento original.
-3. Si toda cita se verifica → respuesta válida. Si alguna no existe → se marca
-   "sin respaldo" y se reintenta o se responde "no lo encuentro en la documentación".
+2. Tras cada respuesta en modo Docs, la app **reabre cada fuente citada** y comprueba que el
+   fragmento citado esté respaldado por ella (`rag/engine/CitationVerifier.kt`):
+   - literal (el fragmento aparece en la fuente), o
+   - sin detalles inventados (los nombres propios y los números que dice tienen que estar en la
+     fuente), o
+   - paráfrasis (suficientes palabras en común, admitiendo plurales y variaciones de verbo).
+3. Cada respuesta muestra un distintivo: **"Citas verificadas (n)"** si todo está respaldado, o
+   cuántas citas quedan **sin respaldo** (o apuntan a una fuente inexistente).
 
-Esto convierte "no inventes" de una instrucción blanda en una comprobación programática.
-Estado: diseño (ver `.agentes/` — carpeta local, no versionada).
+Es determinista: no llama al modelo ni a la red, así que se puede testear al 100% y nunca
+falla por culpa de la red.
 
 ## Configuración
 
@@ -196,10 +201,10 @@ En desarrollo todo (config, modelos, docs internas) vive en `<raíz>/app-home`.
       `LOCAL|MCP`, configuración v4 (`tools`, `outputs`, `latex`, `mcp`) y pantalla **Ajustes →
       Herramientas**. Falta el cliente MCP en sí (SDK oficial).
 - [x] **Arquitectura modular**: un paquete por área en los tres módulos.
-- [x] **Tests**: 247 tests deterministas con JUnit 5 (`./gradlew test`), reglas en
+- [x] **Tests**: 280 tests deterministas con JUnit 5 (`./gradlew test`), reglas en
       `docs/TESTING.md`.
-- [ ] **F6 — HF Spaces (Gradio)**: **congelada**, decisión pendiente (ver §10 del plan).
+- [x] **Verificador determinista de citas**: cada `[n]` de la respuesta se comprueba contra su
+      fuente; la respuesta muestra si está respaldada.
+- [ ] **F6 — HF Spaces (Gradio)**: **congelada**, decisión pendiente (ver §11 del plan).
 - [ ] **F8 — cliente MCP real** (SDK oficial) sobre stdio/HTTP.
 - [ ] Manual de uso del FunshiEngine como fuente RAG.
-- [ ] Verificador determinista de citas (script post-generación).
-- [ ] Tests de integración de `KnowledgeBase.sync()` + `RagEngine.ask()`.

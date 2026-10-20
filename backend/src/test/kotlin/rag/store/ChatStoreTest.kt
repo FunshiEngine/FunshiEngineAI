@@ -104,6 +104,29 @@ class ChatStoreTest {
     }
 
     @Test
+    fun `la verificacion de citas se guarda con el mensaje`() {
+        val f = tempFile()
+        val mensaje = StoredMessage(
+            role = "assistant",
+            text = "El motor usa Vulkan [1].",
+            citation = StoredCitation(verified = 1, unsupported = 0, unknown = 0),
+        )
+        ChatStore.save(listOf(StoredNode(id = "c1", messages = listOf(mensaje))), f)
+        val leido = ChatStore.load(f)
+        assertEquals(1, leido[0].messages[0].citation?.verified)
+        assertEquals(0, leido[0].messages[0].citation?.unsupported)
+    }
+
+    @Test
+    fun `un mensaje viejo sin verificacion de citas sigue leyendose`() {
+        val f = tempFile()
+        Files.writeString(f, """[{"id":"c1","messages":[{"role":"assistant","text":"hola"}]}]""")
+        val leido = ChatStore.load(f)
+        assertEquals(1, leido[0].messages.size)
+        assertEquals(null, leido[0].messages[0].citation)
+    }
+
+    @Test
     fun `el formato viejo (lista plana) se migra solo`() {
         val f = tempFile()
         Files.writeString(

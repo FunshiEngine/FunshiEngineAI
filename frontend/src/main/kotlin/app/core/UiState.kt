@@ -37,6 +37,29 @@ data class UiAttachment(
     val mime: String = "",
 )
 
+/**
+ * Verificación de las citas de una respuesta (F9).
+ *
+ * En modo Docs el modelo tiene que citar sus fuentes (`[1]`, `[2]…). Después
+ * de responder, la app comprueba cada cita contra la fuente citada y deja
+ * el resultado a la vista: así el usuario sabe si la respuesta está respaldada
+ * por la documentación o no.
+ */
+data class UiCitation(
+    /** Citas respaldadas por la fuente que citan. */
+    val verified: Int = 0,
+    /** Citas cuya fuente existe pero no respalda lo que se dice. */
+    val unsupported: Int = 0,
+    /** Citas que apuntan a una fuente que no existe. */
+    val unknown: Int = 0,
+) {
+    /** Total de citas de la respuesta. */
+    val total: Int get() = verified + unsupported + unknown
+
+    /** ¿Todo respaldado? */
+    val ok: Boolean get() = total > 0 && unsupported == 0 && unknown == 0
+}
+
 /** Mensaje de chat para la UI. */
 data class UiMessage(
     val role: String,
@@ -44,6 +67,8 @@ data class UiMessage(
     val sources: List<String> = emptyList(),
     val toolCalls: List<UiToolCall> = emptyList(),
     val attachments: List<UiAttachment> = emptyList(),
+    /** Verificación de citas (sólo en modo Docs). */
+    val citation: UiCitation? = null,
 )
 
 /** Archivo documental cargado en un motor (para el panel "Documentación"). */

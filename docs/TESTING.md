@@ -73,6 +73,11 @@ existe dentro del build de cada módulo.
   recortado y el prompt de sistema.
 - `ChatStoreTest` — los chats sobreviven al reinicio (árbol, adjuntos,
   permisos y migración del formato viejo).
+- `CitationVerifierTest` — el verificador de citas: una cita literal, una
+  paráfrasis, un nombre propio inventado, un número inventado, una fuente que
+  no existe y una respuesta sin citas.
+- `ChatMessagesTest` — lo que se ve en el chat es lo que se guarda (adjuntos,
+  tarjetas de herramientas y verificación de citas).
 - `MathRenderTest` / `MarkdownTest` — lo que el modelo escribe se ve bien.
 - `LlmConfigTest` — la config rota se avisa antes de empezar a chatear.
 - `OpenAiCompatibleGatewayTest` — el SSE se parsea bien, los `tool_calls`
@@ -82,4 +87,4 @@ existe dentro del build de cada módulo.
 
 ## Cobertura actual
 
-247 tests (`llm-api` 32, `backend` 182, `frontend` 33).
+280 tests (`llm-api` 32, `backend` 211, `frontend` 37).

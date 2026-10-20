@@ -1,5 +1,42 @@
 # Registro de Cambios - FunshiEngineAI
 
+## v0.11.0 (2026-10-20) — F9: verificador determinista de citas
+
+### ✨ Nuevas Características
+
+#### El "no inventar" deja de ser una instrucción blanda
+- **`backend/rag/engine/CitationVerifier.kt`** (nuevo): comprueba, sin llamar al
+  modelo ni a la red, que cada cita `[n]` de la respuesta esté respaldada por la
+  fuente que cita. Es una función pura: se testea al 100% y nunca falla por
+  culpa de la red.
+- Tres criterios, en orden:
+  1. **Literal**: el fragmento citado aparece en la fuente (tras normalizar:
+     minúsculas, sin acentos, sin puntuación, camel case partido).
+  2. **Sin detalles inventados**: los nombres propios y los números de dos
+     dígitos o más que dice el fragmento tienen que estar en la fuente. Es lo
+     que separa una paráfrasis de una invención: si el modelo escribió "usa
+     DirectX 12" y la fuente dice "usa Vulkan", la cita no está respaldada
+     aunque las frases se parezcan.
+  3. **Paráfrasis**: al menos el 50% de las palabras significativas del
+     fragmento aparecen en la fuente. Se aceptan plurales y variaciones de
+     verbo ("renderiza" / "renderizar").
+- Cada cita se reporta por separado con su fragmento, su fuente y el motivo
+  si no está respaldada. El informe también lista las fuentes recuperadas que
+  el modelo **no** usó.
+
+#### Distintivo en el chat
+- En modo Docs, tras cada respuesta la app verifica las citas y la burbuja
+  muestra **"Citas verificadas (n)"** o cuántas quedan **sin respaldo** (y
+  cuántas apuntan a una fuente que no existe).
+- La verificación se guarda con el mensaje (`StoredCitation`), así que el
+  distintivo sigue ahí al reabrir el chat.
+
+### 🧪 Tests
+- **280 tests** en total (backend 211, frontend 37, llm-api 32).
+- `CitationVerifierTest` (backend, 27 casos): cita literal, paráfrasis,
+  invención de nombre propio, invención de número, fuente inexistente,
+  respuesta sin citas, cita repetida, acentos, plurales y variaciones.
+
 ## v0.10.0 (2026-10-20) — F7: MCP preparado, configuración v4 y tests
 
 ### ✨ Nuevas Características

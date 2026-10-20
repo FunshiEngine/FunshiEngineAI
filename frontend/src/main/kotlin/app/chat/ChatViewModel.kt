@@ -8,6 +8,7 @@ import app.core.ChatRow
 import app.core.ChatTree
 import app.core.Screen
 import app.core.UiAttachment
+import app.core.UiCitation
 import app.core.UiDocsFile
 import app.core.UiMessage
 import app.core.UiProgress
@@ -343,7 +344,16 @@ class ChatViewModel {
                     }
                 }
                 if (activeChatId == originChatId) {
-                    updateLast(answer.text, sourceLabels, cards, attachments)
+                    // Modo Docs: se comprueba que las citas estén respaldadas
+                    // por la fuente que citan (F9). Es determinista: no llama
+                    // al modelo ni a la red.
+                    val citation = if (useDocs && prepared.sources.isNotEmpty()) {
+                        val report = eng.verify(answer.text, prepared.sources)
+                        UiCitation(report.verified, report.unsupported, report.unknownCount)
+                    } else {
+                        null
+                    }
+                    updateLast(answer.text, sourceLabels, cards, attachments, citation)
                 }
             } catch (e: CancellationException) {
                 if (activeChatId == originChatId) updateLast("(cancelado)")
@@ -452,10 +462,17 @@ class ChatViewModel {
         sources: List<String> = emptyList(),
         toolCards: List<UiToolCall> = emptyList(),
         attachments: List<UiAttachment> = emptyList(),
+        citation: UiCitation? = null,
     ) {
         if (messages.isEmpty()) return
         messages = messages.dropLast(1) +
-            messages.last().copy(text = text, sources = sources, toolCalls = toolCards, attachments = attachments)
+            messages.last().copy(
+                text = text,
+                sources = sources,
+                toolCalls = toolCards,
+                attachments = attachments,
+                citation = citation,
+            )
     }
 
     internal fun friendly(e: Throwable): String = when (e) {

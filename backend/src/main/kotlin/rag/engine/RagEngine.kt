@@ -67,6 +67,15 @@ class RagEngine(
     }
 
     /**
+     * Verifica las citas de una respuesta contra sus fuentes (F9).
+     *
+     * Determinista: no llama al modelo ni a la red. El verificador abre cada
+     * fuente citada y comprueba que el fragmento esté respaldado por ella.
+     */
+    fun verify(answer: String, sources: List<Chunk>): CitationReport =
+        CitationVerifier.verify(answer, sources)
+
+    /**
      * Modo General: conversación libre SIN la restricción de responder sólo de
      * la documentación. El modelo usa su propio conocimiento; no hay fuentes
      * que citar. Es lo que permite charlar cuando la base está vacía.

@@ -61,7 +61,7 @@ en el request `tools[]`; la dependencia va en un solo sentido.
 | `rag.config` | `AppConfig`, `AppPaths`, `RagConfig`, perfiles de color, `ToolsConfig`/`OutputsConfig`/`LatexConfig` (F7) |
 | `rag.store` | `ChatStore`: persistencia del árbol de chats (`config/chats.json`) |
 | `rag.retrieval` | `Chunker`, `Bm25Index`, `KnowledgeBase`, `Sources`, modelos de documento |
-| `rag.engine` | `RagEngine`: arma el prompt (system + contexto + historial) y responde |
+| `rag.engine` | `RagEngine`: arma el prompt (system + contexto + historial) y responde; `CitationVerifier` (F9): comprueba las citas de la respuesta contra sus fuentes |
 | `rag.agent` | Tool calling: `Tool`, `ToolResult`, `ToolContext`, `ToolRegistry`, `AgentLoop`, `PromptToolParser`, `ToolCallSanitizer`, `ToolPermissions`, `tools/GetTimeTool`, `tools/FileTools`, `tools/WebTools`, `tools/LatexTool` |
 | `rag.mcp` | MCP (F7): `McpConnection` (contrato), `McpToolAdapter`, `McpManager`, `McpConfig` |
 
@@ -130,6 +130,24 @@ feedback**: el bucle consume la ronda, lo reintenta y sigue.
 `RagEngine.prepare()` separa la construcción del contexto (system prompt + chunks recuperados +
 historial) de la ejecución. El `AgentLoop` reutiliza esos mensajes y agrega sus rondas. El modo
 DOCS sigue exigiendo fuentes: una respuesta sin citas no se entrega como si estuviera respaldada.
+
+### Verificación de citas (F9)
+
+El system prompt dice "respondé sólo con el contexto", pero eso es una instrucción blanda: un
+modelo chico puede parafrasear, exagerar o inventar. `rag.engine.CitationVerifier` lo convierte
+en una comprobación programática y **determinista** (sin modelo, sin red):
+
+| Criterio | Qué exige | Por qué |
+|----------|-----------|---------|
+| Literal | El fragmento citado aparece en la fuente | El caso normal. |
+| Sin detalles inventados | Los nombres propios y los números (2+ dígitos) del fragmento aparecen en la fuente | Separa la paráfrasis de la invención ("DirectX 12" vs "Vulkan"). |
+| Paráfrasis | ≥ 50% de las palabras significativas del fragmento aparecen en la fuente | Acepta parafrasis honestas; admite plurales y variaciones de verbo. |
+
+`RagEngine.verify(respuesta, fuentes)` devuelve un informe por cita (`CitationCheck`: fragmento,
+fuente, respaldada o no y por qué) y un resumen (`CitationReport`: válidas, desconocidas, fuentes
+sin usar). La UI lo llama al terminar cada respuesta en modo Docs y muestra el distintivo
+("Citas verificadas (n)" o cuántas quedan sin respaldo). El resultado se guarda con el mensaje
+(`StoredCitation`) para que siga visible al reabrir el chat.
 
 ---
 
