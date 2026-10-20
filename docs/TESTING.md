@@ -48,6 +48,9 @@ existe dentro del build de cada módulo.
 
 - `ToolPermissionsTest` — la puerta de permisos. Si deja pasar una herramienta
   sin permiso, la app escribe archivos o sale a internet sin consentimiento.
+- `AgentLoopTest` — el bucle de tool calling: qué se ejecuta, qué vuelve al
+  modelo, cuándo se corta (permiso denegado, errores seguidos, timeout) y
+  qué pasa con la cancelación del usuario.
 - `ToolCallSanitizerTest` — el modelo devuelve JSON roto; el sanitizador
   decide si la llamada se ejecuta o vuelve como feedback.
 - `PromptToolParserTest` — el protocolo por prompt del modo LOCAL, incluido
@@ -64,9 +67,19 @@ existe dentro del build de cada módulo.
   hace falta ningún servidor MCP de verdad).
 - `ConfigMigrationTest` — la migración v3 → v4 tiene que ser invisible: una
   config vieja se comporta exactamente igual que antes.
+- `ChunkerTest` / `Bm25IndexTest` / `KnowledgeBaseTest` — el troceado, el
+  orden de relevancia y la carga de la documentación.
+- `RagEngineTest` — lo que ve el modelo: contexto numerado, historial
+  recortado y el prompt de sistema.
+- `ChatStoreTest` — los chats sobreviven al reinicio (árbol, adjuntos,
+  permisos y migración del formato viejo).
 - `MathRenderTest` / `MarkdownTest` — lo que el modelo escribe se ve bien.
 - `LlmConfigTest` — la config rota se avisa antes de empezar a chatear.
+- `OpenAiCompatibleGatewayTest` — el SSE se parsea bien, los `tool_calls`
+  fragmentados se acumulan en una sola llamada y los errores HTTP se
+  clasifican (401, 429, 400 por contexto, 500, servidor caído). Se prueba
+  contra un **servidor HTTP local** del JDK: sin red y sin modelo.
 
 ## Cobertura actual
 
-157 tests (`llm-api` 13, `backend` 111, `frontend` 33).
+247 tests (`llm-api` 32, `backend` 182, `frontend` 33).

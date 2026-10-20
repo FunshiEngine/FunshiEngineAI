@@ -61,14 +61,25 @@
 ### 🧪 Tests
 - **Infraestructura de tests** (JUnit 5) en los cuatro módulos JVM, con
   `useJUnitPlatform()` y AWT sin escritorio. Ver `docs/TESTING.md`.
-- **157 tests**, todos deterministas (sin red, sin esperas):
-  - backend (111): permisos, sanitizador, parser del protocolo por prompt,
-    `latex_compile` con un motor TeX falso, tools de archivos y web, registro
-    de tools, adaptador y administrador MCP, migración de configuración.
+- **247 tests**, todos deterministas (sin red, sin esperas):
+  - backend (182): el bucle de tool calling (`AgentLoopTest`: qué se ejecuta,
+    qué se devuelve al modelo, cuándo se rinde), permisos, sanitizador, parser
+    del protocolo por prompt, `latex_compile` con un motor TeX falso, tools de
+    archivos y web, registro de tools, adaptador y administrador MCP, migración
+    de configuración, troceador, índice BM25, base de conocimiento, motor de
+    RAG y persistencia de chats.
   - frontend (33): segmentación de matemática y render, parser de markdown.
-  - llm-api (13): validación fail-fast de la config del LLM.
+  - llm-api (32): validación fail-fast de la config del LLM y el gateway
+    OpenAI-compatible (SSE, acumulación de `tool_calls`, body del request y
+    clasificación de errores) contra un **servidor HTTP local** del JDK.
 
 ### 🐛 Correcciones
+- **El tope de errores de herramienta nunca se alcanzaba** (F1, grave): el
+  contador de fallos consecutivos se ponía en cero *al empezar* cada ronda, así
+  que nunca llegaba al máximo de 3. Con una tool que fallara siempre, el bucle
+  seguía dando vueltas hasta el límite de iteraciones (8) en vez de rendirse
+  después de 3. Ahora sólo un **éxito** corta la racha de errores. Lo detectó
+  `AgentLoopTest`.
 - **Sanitizador de tool calls**: la reparación de JSON nunca se probaba cuando
   el parseo leniente tenía éxito pero la **forma** era inválida. Con comillas
   curvas el parser leniente acepta `“tool”` como clave, la forma fallaba y la

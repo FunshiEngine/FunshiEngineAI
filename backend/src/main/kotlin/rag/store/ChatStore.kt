@@ -1,6 +1,7 @@
 package rag.store
 
 import java.nio.file.Files
+import java.nio.file.Path
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import rag.config.AppJson
@@ -80,9 +81,12 @@ object ChatStore {
      * Carga los hijos de la raíz. Primero intenta el formato v1 (plano): el JSON
      * v2 no tiene el campo "title", así que esa decodificación falla y seguimos
      * con el esquema de árbol.
+     *
+     * @param path dónde leer (por defecto `config/chats.json`): los tests
+     *   pasan una ruta propia para no tocar los chats del usuario.
      */
-    fun load(): List<StoredNode> {
-        val f = file()
+    fun load(path: Path = file()): List<StoredNode> {
+        val f = path
         if (!Files.exists(f)) return emptyList()
         val text = try {
             Files.readString(f)
@@ -110,8 +114,13 @@ object ChatStore {
         }
     }
 
-    fun save(nodes: List<StoredNode>) {
-        val f = file()
+    /**
+     * Guarda el árbol de chats/carpetas.
+     *
+     * @param path dónde escribir (por defecto `config/chats.json`).
+     */
+    fun save(nodes: List<StoredNode>, path: Path = file()) {
+        val f = path
         Files.createDirectories(f.parent)
         Files.writeString(f, AppJson.encodeToString(nodes))
     }

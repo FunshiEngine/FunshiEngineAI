@@ -139,7 +139,6 @@ class AgentLoop(
             // generar feedback para que el modelo lo reintente.
             when (val sanitized = sanitizeFrom(rawCall)) {
                 is SanitizedToolCall.Valid -> {
-                    consecutiveToolErrors = 0
                     val invocation = LlmChunk.ToolCall(
                         id = sanitized.id.ifBlank { sanitized.name },
                         name = sanitized.name,
@@ -178,6 +177,12 @@ class AgentLoop(
                     if (!result.ok && !denied) {
                         consecutiveToolErrors++
                         if (consecutiveToolErrors >= MAX_CONSECUTIVE_TOOL_ERRORS) break
+                    } else if (result.ok) {
+                        // Sólo un ÉXITO corta la racha de errores. Antes el
+                        // contador se ponía en cero al empezar la ronda, así que
+                        // nunca llegaba al tope y el bucle seguía hasta
+                        // maxIterations con la tool siempre fallando.
+                        consecutiveToolErrors = 0
                     }
 
                     // Siguiente ronda: el modelo ve su llamada y el resultado.

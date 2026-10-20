@@ -468,7 +468,7 @@ constantes del código, así que una instalación migrada se comporta igual.
 | **F6** | `GradioSpaceGateway` para HF Spaces | **CONGELADA** — decisión pendiente (ver §10) | — |
 | **F7** | Contrato MCP + registro con orígenes + config v4 + pantalla de permisos + documentación | F1–F4 | ✅ 2026-10-20 |
 | **F8** | Cliente MCP real (SDK oficial) sobre stdio/HTTP | F7 | Pendiente |
-| **T** | Infraestructura de tests (JUnit 5) + 157 tests deterministas | — | ✅ 2026-10-20 |
+| **T** | Infraestructura de tests (JUnit 5) + 247 tests deterministas | — | ✅ 2026-10-20 |
 
 F2 es independiente de F1 y puede hacerse en paralelo.
 

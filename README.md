@@ -196,7 +196,7 @@ En desarrollo todo (config, modelos, docs internas) vive en `<raíz>/app-home`.
       `LOCAL|MCP`, configuración v4 (`tools`, `outputs`, `latex`, `mcp`) y pantalla **Ajustes →
       Herramientas**. Falta el cliente MCP en sí (SDK oficial).
 - [x] **Arquitectura modular**: un paquete por área en los tres módulos.
-- [x] **Tests**: 157 tests deterministas con JUnit 5 (`./gradlew test`), reglas en
+- [x] **Tests**: 247 tests deterministas con JUnit 5 (`./gradlew test`), reglas en
       `docs/TESTING.md`.
 - [ ] **F6 — HF Spaces (Gradio)**: **congelada**, decisión pendiente (ver §10 del plan).
 - [ ] **F8 — cliente MCP real** (SDK oficial) sobre stdio/HTTP.
