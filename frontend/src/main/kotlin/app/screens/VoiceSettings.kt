@@ -12,6 +12,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -48,6 +49,9 @@ import app.chat.setTtsSpeed
 import app.chat.setTtsTimeoutSeconds
 import app.chat.setTtsVoice
 import app.chat.setVoiceEnabled
+import app.chat.detectWhisperBinary
+import app.chat.installWhisper
+import app.chat.whisperModelReady
 import app.chat.setWhisperCliPath
 import app.chat.setWhisperModelPath
 import voice.config.SttProvider
@@ -149,17 +153,33 @@ fun VoiceSettings(vm: ChatViewModel) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(8.dp))
+                    // --- Estado del binario y del modelo ---
+                    WhisperStatus(vm)
+                    Spacer(Modifier.height(8.dp))
                     VoiceTextField(
                         label = "Ruta del binario (vacío = autodetectar en el PATH)",
                         value = cfg.stt.whisperCliPath,
                         onValue = { vm.setWhisperCliPath(it) },
                     )
                     Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { vm.detectWhisperBinary() }) {
+                            Text("Detectar whisper-cli", fontSize = 12.sp)
+                        }
+                        OutlinedButton(onClick = { vm.installWhisper() }) {
+                            Text("Instalar whisper.cpp", fontSize = 12.sp)
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
                     VoiceTextField(
                         label = "Ruta del modelo GGML (obligatoria)",
                         value = cfg.stt.whisperModelPath,
                         onValue = { vm.setWhisperModelPath(it) },
                     )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(onClick = { vm.go(app.core.Screen.MODELS) }) {
+                        Text("Elegir un modelo descargado", fontSize = 12.sp)
+                    }
                     Spacer(Modifier.height(8.dp))
                     VoiceTextField(
                         label = "Idioma (vacío = que lo detecte)",
@@ -330,6 +350,53 @@ fun VoiceSettings(vm: ChatViewModel) {
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Estado del dictado local: si el binario `whisper-cli` está y si el modelo
+ * elegido existe en disco.
+ *
+ * Fail-fast: si falta algo, se dice **qué** falta y no se transcribe nada.
+ */
+@Composable
+private fun WhisperStatus(vm: ChatViewModel) {
+    val cfg = vm.config.voice
+    val binario = cfg.stt.whisperCliPath.trim()
+    val modelo = cfg.stt.whisperModelPath.trim()
+    val modeloOk = vm.whisperModelReady()
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = if (modeloOk) MaterialTheme.colorScheme.surfaceVariant
+            else MaterialTheme.colorScheme.errorContainer,
+        ),
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Text(
+                "Estado del dictado local",
+                style = MaterialTheme.typography.titleSmall,
+                color = if (modeloOk) MaterialTheme.colorScheme.onSurfaceVariant
+                else MaterialTheme.colorScheme.onErrorContainer,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Binario: " + if (binario.isBlank()) "sin configurar (probá Detectar o Instalar)"
+                else binario,
+                fontSize = 12.sp,
+                color = if (modeloOk) MaterialTheme.colorScheme.onSurfaceVariant
+                else MaterialTheme.colorScheme.onErrorContainer,
+            )
+            Text(
+                "Modelo: " + when {
+                    modelo.isBlank() -> "sin elegir (descargá uno en Modelos → Modelos de voz)"
+                    modeloOk -> modelo
+                    else -> "$modelo (no existe en disco)"
+                },
+                fontSize = 12.sp,
+                color = if (modeloOk) MaterialTheme.colorScheme.onSurfaceVariant
+                else MaterialTheme.colorScheme.onErrorContainer,
+            )
         }
     }
 }

@@ -98,6 +98,17 @@ existe dentro del build de cada módulo.
 - `ResolvedVoiceTest` — la voz apagada no hereda nada; si la URL o la clave
   están vacías, se heredan del motor de inferencia activo; un endpoint local no
   pide clave.
+- `VoiceModelsTest` (voice-api) — qué archivos de un repo son modelos de voz
+  (`ggml-*.bin`; ni los `.gguf` de otros proyectos ni los baselines de los
+  tests) y cómo es el catálogo por defecto.
+- `WhisperManagerTest` (voice-api) — dónde se busca el binario `whisper-cli`
+  (incluidas las variantes de MSVC y el nombre viejo `main`).
+- `VoiceModelManagerTest` (backend) — el catálogo de voz, la descarga a medias,
+  la activación (escribe la ruta **absoluta** del modelo) y que su carpeta sea
+  propia.
+- `ModelKindsTest` (frontend) — qué repos y qué nombres de modelo son de voz
+  (para separarlos y para rechazar un modelo de transcripción como modelo de
+  chat).
 - `ChunkerTest` / `Bm25IndexTest` / `KnowledgeBaseTest` — el troceado, el
   orden de relevancia y la carga de la documentación.
 - `RagEngineTest` — lo que ve el modelo: contexto numerado, historial
@@ -118,4 +129,4 @@ existe dentro del build de cada módulo.
 
 ## Cobertura actual
 
-376 tests (`llm-api` 32, `voice-api` 47, `backend` 244, `frontend` 53).
+402 tests (`llm-api` 32, `voice-api` 60, `backend` 253, `frontend` 57).

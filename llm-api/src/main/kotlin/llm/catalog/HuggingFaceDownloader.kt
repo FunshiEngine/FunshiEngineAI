@@ -27,15 +27,21 @@ import llm.error.LlmErrorCode
 import llm.error.LlmException
 
 /**
- * Un archivo GGUF publicado en un repo de Hugging Face (para elegir variante).
+ * Un archivo publicado en un repo de Hugging Face (para elegir variante).
  * [name] es la ruta completa dentro del repo (`subcarpeta/archivo.gguf`), porque
  * la URL de descarga la necesita completa; usa [display] para mostrarlo en la UI.
+ *
+ * No es sólo de `.gguf`: el mismo tipo sirve para los modelos de voz
+ * (los `.bin` de whisper.cpp).
  */
 @kotlinx.serialization.Serializable
-data class HfGgufFile(val name: String, val size: Long = 0L) {
+data class HfRepoFile(val name: String, val size: Long = 0L) {
     /** Nombre visible (sin carpetas). */
     val display: String get() = name.substringAfterLast("/")
 }
+
+/** Alias histórico: el tipo se usaba sólo para `.gguf`. */
+typealias HfGgufFile = HfRepoFile
 
 /**
  * Repo GGUF encontrado en una búsqueda de Hugging Face: id + popularidad,
@@ -75,11 +81,19 @@ class HuggingFaceDownloader(private val token: String = "") {
             locks.computeIfAbsent(target.toAbsolutePath().toString()) { Mutex() }
 
         /**
-         * Lista los `.gguf` publicados en un repo de HF (`/api/models/<repo>?blobs=true`),
+         * Lista los archivos publicados en un repo de HF (`/api/models/<repo>?blobs=true`),
          * devolviendo ruta completa + tamaño, para que la UI muestre variantes
          * elegibles con su peso real.
+         *
+         * [extensions] filtra por extensión (sin punto, en minúsculas): por
+         * defecto sólo los `.gguf` (modelos de LLM); los modelos de voz
+         * (los `.bin` de whisper.cpp) se piden con `setOf("bin")`.
          */
-        suspend fun listGgufFiles(repo: String, token: String = ""): List<HfGgufFile> = withContext(Dispatchers.IO) {
+        suspend fun listRepoFiles(
+            repo: String,
+            token: String = "",
+            extensions: Set<String> = setOf("gguf"),
+        ): List<HfRepoFile> = withContext(Dispatchers.IO) {
             val client = HttpClient(CIO) {
                 install(HttpTimeout) { requestTimeoutMillis = 30_000; socketTimeoutMillis = 30_000 }
             }
@@ -95,11 +109,11 @@ class HuggingFaceDownloader(private val token: String = "") {
                     val path = o["rfilename"]?.let { v ->
                         try { v.jsonPrimitive.content } catch (_: Exception) { null }
                     } ?: return@mapNotNull null
-                    if (!path.endsWith(".gguf", ignoreCase = true)) return@mapNotNull null
+                    if (!hasExtension(path, extensions)) return@mapNotNull null
                     val size = o["size"]?.let { v ->
                         try { v.jsonPrimitive.content.toLongOrNull() ?: 0L } catch (_: Exception) { 0L }
                     } ?: 0L
-                    HfGgufFile(name = path, size = size)
+                    HfRepoFile(name = path, size = size)
                 }
             } catch (e: Exception) {
                 throw LlmException(
@@ -113,18 +127,50 @@ class HuggingFaceDownloader(private val token: String = "") {
         }
 
         /**
-         * Busca modelos GGUF en Hugging Face (`/api/models?search=…&filter=gguf`,
-         * ordenados por descargas). Si el tag `gguf` no devuelve nada (repos sin
-         * etiquetar), reintenta sin el filtro para no dejar al usuario sin resultados.
+         * ¿El archivo termina con una de las extensiones pedidas?
+         *
+         * Función pura (testeable): compara sin distinguir mayúsculas y sin
+         * distinguir el punto final de la extensión.
          */
-        suspend fun searchRepos(query: String, token: String = "", limit: Int = 20): List<HfRepoHit> =
+        fun hasExtension(path: String, extensions: Set<String>): Boolean {
+            if (extensions.isEmpty()) return true
+            val lower = path.lowercase()
+            return extensions.any { ext ->
+                val e = ext.removePrefix(".").lowercase()
+                lower.endsWith(".$e")
+            }
+        }
+
+        /** Lista sólo los `.gguf` (atalogo de modelos de LLM). */
+        suspend fun listGgufFiles(repo: String, token: String = ""): List<HfRepoFile> =
+            listRepoFiles(repo, token, setOf("gguf"))
+
+        /**
+         * Busca modelos en Hugging Face (`/api/models?search=…`), ordenados por
+         * descargas.
+         *
+         * [filterTag] es la etiqueta de HF con la que se filtra (por defecto
+         * `gguf`, que es lo que corresponde a los modelos de LLM). Con `null`
+         * se busca **sin filtro**: es lo que necesita la voz, porque los
+         * modelos de whisper.cpp no llevan la etiqueta `gguf`.
+         *
+         * Si el filtro deja al usuario sin resultados, se reintenta sin él
+         * para no dejarlo a mano.
+         */
+        suspend fun searchRepos(
+            query: String,
+            token: String = "",
+            limit: Int = 20,
+            filterTag: String? = "gguf",
+        ): List<HfRepoHit> =
             withContext(Dispatchers.IO) {
                 val client = HttpClient(CIO) {
                     install(HttpTimeout) { requestTimeoutMillis = 30_000; socketTimeoutMillis = 30_000 }
                 }
                 try {
-                    val hits = fetchRepos(client, query, token, limit, ggufOnly = true)
-                    if (hits.isNotEmpty()) hits else fetchRepos(client, query, token, limit, ggufOnly = false)
+                    val hits = fetchRepos(client, query, token, limit, filterTag)
+                    if (hits.isNotEmpty() || filterTag == null) hits
+                    else fetchRepos(client, query, token, limit, null)
                 } catch (e: Exception) {
                     throw LlmException(
                         LlmErrorCode.DESCARGA_FALLIDA,
@@ -141,11 +187,11 @@ class HuggingFaceDownloader(private val token: String = "") {
             query: String,
             token: String,
             limit: Int,
-            ggufOnly: Boolean,
+            filterTag: String?,
         ): List<HfRepoHit> {
             val text = client.get("https://huggingface.co/api/models") {
                 parameter("search", query.trim())
-                if (ggufOnly) parameter("filter", "gguf")
+                if (!filterTag.isNullOrBlank()) parameter("filter", filterTag)
                 parameter("sort", "downloads")
                 parameter("direction", "-1")
                 parameter("limit", limit)

@@ -45,6 +45,9 @@ import rag.retrieval.KnowledgeBase
 import rag.store.ChatStore
 import rag.store.StoredMessage
 import rag.store.StoredToolCall
+import rag.voice.VoiceModelManager
+import voice.catalog.VoiceModelEntry
+import voice.local.WhisperManager
 import voice.service.VoiceService
 
 /**
@@ -94,6 +97,22 @@ class ChatViewModel {
      * La config se lee en cada llamada (lambda), como en `LlmService`.
      */
     internal val voiceService = VoiceService({ config.resolvedVoice() })
+    /**
+     * Modelos de **voz** (V2): catálogo, descarga y activación de los
+     * `.bin` de whisper.cpp.
+     *
+     * Es un gestor **aparte** del de los LLM: activar un modelo de voz
+     * escribe en `voice.stt.whisperModelPath` y **nunca** toca el motor de
+     * inferencia.
+     */
+    internal val voiceModels = VoiceModelManager({ config.voice }, AppPaths.home) { updated ->
+        config = config.copy(voice = updated).save()
+    }
+    /**
+     * Binario de whisper.cpp (V2): lo detecta o lo instala (clona + compila),
+     * igual que la app hace con `llama-server`.
+     */
+    internal val whisper = WhisperManager({ config.voice }, AppPaths.home)
     internal var chatJob: Job? = null
     /** Cola de mensajes pendientes mientras no hay engine listo. */
     internal val pendingMessages = mutableListOf<Pair<String, List<ChatMessage>>>()
@@ -121,6 +140,12 @@ class ChatViewModel {
     var progress by mutableStateOf<UiProgress?>(null)
         internal set
     var modelEntries by mutableStateOf(listOf<ModelEntry>())
+        internal set
+    /** Catálogo de modelos de voz (V2): estado en pantalla. */
+    var voiceModelEntries by mutableStateOf(listOf<VoiceModelEntry>())
+        internal set
+    /** Progreso de la descarga de un modelo de voz (V2, separado del LLM). */
+    var voiceProgress by mutableStateOf<UiProgress?>(null)
         internal set
     var apiPresets by mutableStateOf(listOf<ApiPreset>())
         internal set

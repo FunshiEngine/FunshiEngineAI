@@ -261,6 +261,59 @@ internal fun plainForSpeech(text: String): String {
 }
 
 /* ---------------------------------------------------------------------------
+ * Whisper local: el binario (whisper-cli) y el modelo.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * Busca `whisper-cli` (en el clon local o en el PATH) y guarda su ruta.
+ *
+ * Si no lo encuentra, lo dice con la guía de instalación (fail-fast): es
+ * mejor un mensaje claro que un micrófono que no transcribe nada.
+ */
+internal fun ChatViewModel.detectWhisperBinary() {
+    val found = whisper.findBinary()
+    if (found == null) {
+        voiceError = whisper.noBinaryError().message
+        return
+    }
+    setWhisperCliPath(found)
+    voiceStatus = "whisper-cli encontrado: $found"
+}
+
+/**
+ * Instala whisper.cpp (clona el repo y lo compila) y guarda la ruta del
+ * binario resultante.
+ *
+ * Es el mismo camino que usa la app con llama.cpp: si el binario ya está, no
+ * se clona ni se compila nada.
+ */
+internal fun ChatViewModel.installWhisper() {
+    scope.launch {
+        try {
+            voiceStatus = "Instalando whisper.cpp…"
+            val path = whisper.ensureReady { p -> voiceStatus = p.message }
+            setWhisperCliPath(path)
+            voiceStatus = "whisper.cpp listo: $path"
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            voiceStatus = "Instalación cancelada."
+        } catch (e: Exception) {
+            voiceError = friendly(e)
+        }
+    }
+}
+
+/** ¿El modelo de voz configurado existe en disco? */
+internal fun ChatViewModel.whisperModelReady(): Boolean {
+    val path = config.voice.stt.whisperModelPath.trim()
+    if (path.isEmpty()) return false
+    return try {
+        java.nio.file.Files.isRegularFile(java.nio.file.Path.of(path))
+    } catch (_: Exception) {
+        false
+    }
+}
+
+/* ---------------------------------------------------------------------------
  * Ajustes de voz (pantalla Ajustes → Voz).
  *
  * Cada cambio se persiste al instante, como el resto de los ajustes.

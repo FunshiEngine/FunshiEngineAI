@@ -11,6 +11,7 @@ import app.core.UiDocsFile
 import app.core.UiMessage
 import app.core.UiProgress
 import app.core.UiToolCall
+import app.core.looksLikeVoiceModelName
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlinx.coroutines.*
@@ -50,6 +51,8 @@ import rag.store.StoredToolCall
  */
 internal fun ChatViewModel.refreshLists() {
     modelEntries = models.entries()
+    // El catálogo de voz va aparte: no se mezcla con los modelos del LLM.
+    refreshVoiceModels()
     apiPresets = models.apis
     activeApiId = models.activeApi()?.id
     activeModelLabel = "${config.llm.hfRepo}/${config.llm.hfFile}"
@@ -176,8 +179,7 @@ internal fun ChatViewModel.searchModels(query: String, onResult: (List<HfRepoHit
 
 // ---- colección de APIs ----
 
-internal fun ChatViewModel.validateApiFields(
-    label: String,
+internal fun ChatViewModel.validateApiFields(    label: String,
     baseUrl: String,
     apiKey: String,
     model: String,
@@ -194,6 +196,12 @@ internal fun ChatViewModel.validateApiFields(
     }
     if (u == k) return "La URL base y la API key no pueden ser iguales. Revisa en qué campo pegaste cada dato."
     if (m.isBlank()) return "Falta el nombre del modelo (ej. gpt-4o-mini)."
+    // Un modelo de voz (whisper, tts, asr…) no sirve para chatear: son para
+    // transcribir. Se avisa acá y no cuando el chat falla en runtime.
+    if (looksLikeVoiceModelName(m)) {
+        return "Ese parece un modelo de voz (transcripción), no de chat. " +
+            "Los modelos de voz se eligen en Ajustes → Voz (o en Modelos → Modelos de voz)."
+    }
     return null
 }
 

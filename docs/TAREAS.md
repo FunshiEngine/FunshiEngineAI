@@ -183,6 +183,43 @@ Pendiente (fuera de V1, ideas):
 
 ---
 
+### 0.2 Modelos de voz: descarga de whisper desde Hugging Face (V2)
+
+**Estado:** IMPLEMENTADO (2026-10-21) — compilado, 402 tests en verde y verificado
+en runtime (descarga real de 74 MB desde HF y activación). Diseño y análisis
+en `.agentes/plan-voz.md` (V2).
+
+Qué se hizo:
+
+- **Catálogo de modelos de voz** (`voice.models` en la config), con los 6
+  modelos oficiales de whisper.cpp por defecto. Se listan, descargan (con
+  progreso y reanudación) y activan **desde la pantalla Modelos**, con el
+  mismo mecanismo que los modelos de LLM.
+- **Binario `whisper-cli`**: se detecta (ruta del usuario → clon local → PATH)
+  o se instala desde Ajustes → Voz (clona + compila con cmake, como la app
+  hace con llama.cpp), con log en `logs/whisper-build.log`.
+- **Separación total** de los catálogos: `llm.modelCatalog` (texto, activa el
+  motor de inferencia) y `voice.models` (voz, activa el dictado). Carpetas
+  distintas (`models/` y `models/voz/`). El segmentado "Modelos de texto /
+  Modelos de voz" en la UI, la etiqueta "Voz" en los resultados y el botón
+  "Usar para el dictado".
+- **Guardas**: un modelo de transcripción no se acepta como modelo de chat
+  al configurar una API (avisa y manda a Ajustes → Voz).
+- **Generalización del downloader** (`llm-api`): `listRepoFiles(repo, token,
+  extensions)` y `searchRepos(query, token, limit, filterTag)`; la descarga en
+  sí **no se tocó** (ya era genérica y funciona con `.bin`).
+
+Pendiente:
+
+- [ ] **Whisper como servicio**: hoy el motor local es el binario de la línea
+      de comandos (un proceso por dictado). Un modo "servidor" (whisper-server)
+      evitaría el arranque por utterance.
+- [ ] **Transcripción en vivo** (VAD + streaming): hoy se corta por silencio.
+- [ ] **Modelos cuantizados de otros repos**: el listado sólo ofrece los
+      `ggml-*.bin`; hay forks con variantes que podrían aparecer.
+
+---
+
 ### 1. Modelos: "Ver archivos" inline bajo cada resultado (con "Ocultar archivos")
 
 **Estado:** IMPLEMENTADO (2026-10-18) — compilado.

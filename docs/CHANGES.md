@@ -1,5 +1,70 @@
 # Registro de Cambios - FunshiEngineAI
 
+## v0.14.0 (2026-10-21) — V2: modelos de voz (descarga de whisper desde Hugging Face)
+
+### ✨ Nuevas Características
+
+#### Se pueden descargar los modelos de voz (whisper) desde Hugging Face
+- **Catálogo de modelos de voz**: los `.bin` de whisper.cpp (los que carga
+  `whisper-cli`) se buscan, listan, descargan y activan **desde la pantalla
+  Modelos**, con el mismo mecanismo que los modelos de LLM: barra de
+  progreso real (%, MB), reanudación si se corta (`.part` + `Range`) y
+  descarga en segundo plano.
+- **Catálogo por defecto** con los 6 modelos oficiales de whisper.cpp
+  (tiny, base, small-q5_1, medium-q5_0, large-v3-turbo-q5_0, large-v3), con
+  su tamaño y para qué sirve cada uno.
+- **Repo oficial a un clic**: `ggerganov/whisper.cpp` (donde viven los
+  `ggml-*.bin`).
+- **El binario `whisper-cli`**: se **detecta** (ruta del usuario → el clon
+  local → el PATH) o se **instala** desde Ajustes → Voz (clona el repo y lo
+  compila con cmake, como ya hacía la app con llama.cpp). El log queda en
+  `logs/whisper-build.log`.
+
+#### Los modelos de voz NO se mezclan con los de texto
+- La pantalla Modelos tiene un segmentado **"Modelos de texto (LLM)"** /
+  **"Modelos de voz (Whisper)"**: cambian el buscador, el filtro de archivos,
+  el catálogo y el alta manual.
+- Los catálogos son **independientes** (`llm.modelCatalog` y `voice.models`),
+  en carpetas distintas (`models/` y `models/voz/`), y cada uno activa lo
+  suyo: el de texto, el motor de inferencia; el de voz, el dictado local
+  (`voice.stt.whisperModelPath`). Activar un modelo de voz **nunca** cambia
+  el modelo del LLM (ni al revés).
+- Los repos de voz se marcan con la etiqueta **"Voz"** en los resultados del
+  buscador, y el botón del catálogo de voz dice **"Usar para el dictado"**
+  (nunca "Usar").
+- Al configurar una API, un nombre de modelo de transcripción (`whisper-1`,
+  `tts-…`) se rechaza con un mensaje que manda a Ajustes → Voz, en vez de
+  fallar en runtime.
+
+#### Detalles que importan
+- **El token de Hugging Face es el mismo** que el de los modelos de LLM
+  (`llm.hfToken`): es la misma cuenta, no hace falta otra.
+- La búsqueda de voz **no** filtra por la etiqueta `gguf` (los modelos de
+  whisper.cpp no la llevan y sus archivos son `.bin`, no `.gguf`); el listado
+  filtra por `ggml-*.bin`, así que no se ofrecen los `.gguf` de otros
+  proyectos (que son para `transcribe.cpp`) ni los baselines de los tests.
+- **La voz del chat por voz no es la del modelo**: la elige el motor de
+  locución (`voice.tts.voice` y `voice.tts.speed`; con el motor del sistema
+  la elige el sistema operativo). El modelo de LLM sólo aporta URL y clave.
+
+### 🧪 Tests
+- **402 tests** en total (voice-api 60, backend 253, frontend 57, llm-api 32)
+  — +35.
+- `VoiceModelsTest` (voice-api): qué archivos son modelos de voz y cómo es el
+  catálogo por defecto.
+- `WhisperManagerTest` (voice-api): dónde se busca el binario (incluidas las
+  variantes de MSVC y el nombre viejo).
+- `VoiceModelManagerTest` (backend): el catálogo, la descarga a medias, la
+  activación (escribe la ruta **absoluta**) y que la carpeta sea propia.
+- `ModelKindsTest` (frontend): qué repos y qué nombres de modelo son de voz.
+
+### 📖 Documentación
+- `docs/ARCHITECTURE.md`: sección "Modelos de voz: catálogo, descarga y
+  binario (V2)", la tabla de la separación de catálogos y "la voz del chat
+  por voz no es la del modelo".
+- `docs/TAREAS.md`: fase V2.
+- `docs/TESTING.md`, `README.md`: tests, capacidad y config de ejemplo.
+
 ## v0.13.0 (2026-10-21) — V1: voz en el chat (dictado + chat por voz)
 
 ### ✨ Nuevas Características

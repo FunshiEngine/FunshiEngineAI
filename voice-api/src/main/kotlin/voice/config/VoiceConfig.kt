@@ -1,6 +1,8 @@
 package voice.config
 
 import kotlinx.serialization.Serializable
+import voice.catalog.VoiceModelPreset
+import voice.catalog.defaultVoiceModels
 
 /** Motor de transcripción (dictado). */
 @Serializable
@@ -124,6 +126,18 @@ data class VoiceConfig(
     val speakAnswers: Boolean = true,
     /** Tope de caracteres que se leen en voz alta (el resto se muestra). */
     val maxSpeakChars: Int = 1200,
+    /**
+     * Catálogo de **modelos de voz** (los `.bin` de whisper.cpp).
+     *
+     * Va aparte del catálogo de LLM a propósito: usar un modelo de voz no
+     * puede cambiar el motor de inferencia (ni al revés).
+     */
+    val models: List<VoiceModelPreset> = defaultVoiceModels(),
+    /**
+     * Carpeta (relativa al `app-home`) donde se guardan los modelos de voz
+     * descargados. Separada de `llm.modelsDir` para que no se mezclen.
+     */
+    val modelsDir: String = "models/voz",
 ) {
 
     /**

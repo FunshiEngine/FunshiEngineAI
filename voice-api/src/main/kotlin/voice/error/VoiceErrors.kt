@@ -12,6 +12,8 @@ enum class VoiceErrorCode {
     NO_PROVEEDOR,
     /** La configuración de voz es inválida (URL vacía, modelo que no existe…). */
     CONFIG_INVALIDA,
+    /** Falta una herramienta del sistema (git, cmake, whisper-cli…). */
+    NO_CONFIGURADO,
     /** No hay micrófono, o está en uso por otra aplicación. */
     MICROFONO_NO_DISPONIBLE,
     /** La captura de audio falló a mitad de la grabación. */
@@ -24,6 +26,8 @@ enum class VoiceErrorCode {
     SINTETESIS_FALLIDA,
     /** No se pudo reproducir el audio. */
     REPRODUCCION_FALLIDA,
+    /** Falló la descarga de un modelo de voz (red, integridad, 404). */
+    DESCARGA_FALLIDA,
     /** Se superó el tiempo máximo. */
     TIMEOUT,
     /** La operación fue cancelada por el usuario. */

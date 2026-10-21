@@ -68,6 +68,7 @@ en el request `tools[]`; la dependencia va en un solo sentido.
 | `rag.engine` | `RagEngine`: arma el prompt (system + contexto + historial) y responde; `CitationVerifier` (F9): comprueba las citas de la respuesta contra sus fuentes |
 | `rag.agent` | Tool calling: `Tool`, `ToolResult`, `ToolContext`, `ToolRegistry`, `AgentLoop`, `PromptToolParser`, `ToolCallSanitizer`, `ToolPermissions`, `tools/GetTimeTool`, `tools/FileTools`, `tools/WebTools`, `tools/LatexTool` |
 | `rag.mcp` | MCP (F7/F8): `McpConnection` (contrato), `McpToolAdapter`, `McpManager`, `McpConfig`, `McpProtocol` (JSON-RPC), `McpStdioClient` (cliente por stdio) |
+| `rag.voice` | `VoiceModelManager`: catálogo, descarga y activación de los **modelos de voz** (los `.bin` de whisper.cpp). Vive en el backend porque es el módulo que ve `llm-api` (el downloader) **y** `voice-api` (los tipos) |
 
 ### `voice-api` — capa de voz
 
@@ -80,6 +81,8 @@ en el request `tools[]`; la dependencia va en un solo sentido.
 | `voice.net` | Cliente HTTP del JDK (el módulo **no** depende de ktor) |
 | `voice.stt` | `OpenAiSpeechToText` (API compatible con OpenAI), `WhisperCliSpeechToText` (whisper.cpp local) |
 | `voice.tts` | `OpenAiTextToSpeech` (API compatible con OpenAI), `SystemTextToSpeech` (motor del sistema) |
+| `voice.catalog` | `VoiceModelPreset` (catálogo de modelos de voz), `VoiceModelEntry`, `VoiceModels` (qué archivos son modelos de voz y catálogo por defecto) |
+| `voice.local` | `WhisperManager`: detecta el binario `whisper-cli` o lo instala (clona + compila), gemelo de `llm.local.LlamaManager` |
 | `voice.service` | `VoiceService`: fachada que elige los motores según la config (equivalente a `llm.service.LlmService`) |
 | `voice.session` | `VoiceSession`: el ciclo escuchar → transcribir → hablar |
 
@@ -91,10 +94,10 @@ El módulo **no depende de ktor**: el HTTP es el `HttpClient` del JDK, igual que
 | Paquete | Contenido |
 |---------|-----------|
 | `app` | `Main` (ventana, tema), `NavigationRail` (sidebar colapsable) |
-| `app.core` | Tipos compartidos: `UiState.kt` (`Screen`, `UiMessage`, `UiToolCall`, `UiProgress`), `ChatTree.kt` (`ChatNode`, `ChatRow`, `ChatTree`) |
+| `app.core` | Tipos compartidos: `UiState.kt` (`Screen`, `UiMessage`, `UiToolCall`, `UiProgress`), `ChatTree.kt` (`ChatNode`, `ChatRow`, `ChatTree`), `ModelKinds.kt` (`ModelCatalogKind` y qué repos/modelos son de voz) |
 | `app.ui` | Render de contenido: `Markdown.kt` (parser + `MarkdownText`), `CodeBlock.kt` (resaltado, copiar, guardar), `MathRender.kt` (F5: TeX → imagen con JLaTeXMath), `Scrollbar.kt` (scrollbar con el color del tema y control por teclado) |
-| `app.chat` | La pantalla de chat: `ChatViewModel` + áreas, `ChatCommands`, `ChatMessages`, `ChatPane`, `ChatSidebar`, `MessageBubble`, `ToolCallCard`, `ComposerBar`, `ChatScreen`, `ChatScrollbarAdapter`, `LoadingPane`, `ChatTools` (F7), `ChatVoice` + `VoiceBar` (V1) |
-| `app.screens` | `ModelsScreen`, `ApisScreen`, `SettingsPane`, `SettingsComponents`, `ToolsSettings` (F7), `VoiceSettings` (V1) |
+| `app.chat` | La pantalla de chat: `ChatViewModel` + áreas, `ChatCommands`, `ChatMessages`, `ChatPane`, `ChatSidebar`, `MessageBubble`, `ToolCallCard`, `ComposerBar`, `ChatScreen`, `ChatScrollbarAdapter`, `LoadingPane`, `ChatTools` (F7), `ChatVoice` + `VoiceBar` (V1), `ChatVoiceModels` (V2) |
+| `app.screens` | `ModelsScreen` (catálogos de texto y de voz), `ApisScreen`, `SettingsPane`, `SettingsComponents`, `ToolsSettings` (F7), `VoiceSettings` (V1) |
 
 ---
 
@@ -572,12 +575,85 @@ usuario habla
 Si la URL o la clave de voz quedan vacías, `AppConfig.resolvedVoice()` **hereda** las del
 motor de inferencia activo: el mismo modelo que contesta el chat suele hablar.
 
+### La voz del chat por voz NO es la del modelo
+
+El modelo de LLM **no tiene voz**: la voz la elige el **motor de locución**.
+
+| Motor | De dónde sale la voz | ¿Se puede fijar? |
+|---|---|---|
+| `OPENAI` | `voice.tts.voice` (por defecto `alloy`) y `voice.tts.speed` | Sí, desde Ajustes → Voz |
+| `SYSTEM` | La del sistema operativo (Windows: la de `System.Speech`) | No: hoy el motor del sistema la elige y no la respeta |
+
+El modelo de LLM sólo aporta URL y clave (por herencia). Y el modelo de **whisper** no
+habla: sólo transcribe.
+
+### Modelos de voz: catálogo, descarga y binario (V2)
+
+El dictado local necesita **dos** cosas: el **modelo** (los `.bin` de whisper.cpp) y el
+**binario** (`whisper-cli`). Las dos se gestionan como los modelos de LLM, pero **en un
+catálogo aparte**.
+
+| Pieza | Dónde | Qué hace |
+|-------|-------|----------|
+| `voice.catalog.VoiceModelPreset` | `voice-api` | Un modelo de voz del catálogo (repo + archivo + tamaño) |
+| `voice.catalog.defaultVoiceModels()` | `voice-api` | Catálogo por defecto: los 6 modelos oficiales de whisper.cpp |
+| `voice.catalog.isWhisperModelFile()` | `voice-api` | Qué archivos del repo son modelos (`ggml-*.bin`; ni los `.gguf` de otros proyectos ni los baselines de los tests) |
+| `rag.voice.VoiceModelManager` | `backend` | Catálogo, descarga con progreso y cancelación, y **activación** |
+| `voice.local.WhisperManager` | `voice-api` | Detecta el binario o lo instala (clona + compila) |
+
+**Por qué el gestor vive en el backend**: es el único módulo que ve `llm-api` (el
+downloader con streaming y reanudación) **y** `voice-api` (los tipos). Así `voice-api`
+sigue sin ktor y sin depender de `llm-api`.
+
+#### La separación que evita confusiones
+
+Los dos catálogos son **independientes**, y esa es la regla de oro:
+
+| | Catálogo de texto | Catálogo de voz |
+|---|---|---|
+| Dónde vive | `llm.modelCatalog` | `voice.models` |
+| Qué activa | `llm.hfRepo` / `llm.hfFile` (el motor de inferencia) | `voice.stt.whisperModelPath` (el dictado) |
+| Archivos | `.gguf` | `.bin` (`ggml-*.bin`) |
+| Carpeta | `<app-home>/models` | `<app-home>/models/voz` |
+| En la UI | Modelos → **Modelos de texto (LLM)** | Modelos → **Modelos de voz (Whisper)** |
+
+Si se mezclaran, "usar" un modelo de voz dejaría al motor local sin modelo. Por eso
+`ModelManager.activate()` (el del LLM) nunca toca la sección `voice`, y
+`VoiceModelManager.activate()` nunca toca `llm`.
+
+En la UI (pantalla Modelos) el segmentado **Texto / Voz** cambia el buscador, el filtro
+de archivos, el catálogo y el alta manual. Además:
+
+- los repos de voz se marcan con la etiqueta **"Voz"** en los resultados;
+- el botón del catálogo de voz dice **"Usar para el dictado"** (nunca "Usar");
+- al configurar una API, un nombre de modelo de transcripción (`whisper-1`, `tts-…`)
+  se rechaza con un mensaje que manda a Ajustes → Voz.
+
+#### El binario whisper.cpp
+
+`WhisperManager` es el gemelo de `llm.local.LlamaManager` (el que clona y compila
+llama.cpp): detecta primero, instala sólo si falta, y comprueba git/cmake **antes** de
+empezar.
+
+| Orden | Dónde busca |
+|-------|-------------|
+| 1 | `voice.stt.whisperCliPath` (lo que puso el usuario) |
+| 2 | el clon local: `<app-home>/whisper.cpp/build/bin/whisper-cli[.exe]` (+ las variantes `Release`/`Debug` de MSVC y el nombre viejo `main`) |
+| 3 | el PATH: `whisper-cli`, `whisper`, `whisper-cpp` |
+
+Si no aparece, se puede **instalar** desde Ajustes → Voz ("Instalar whisper.cpp"):
+clona el repo y lo compila con cmake, con el log en `logs/whisper-build.log`. Sin git o
+sin cmake, el error lo dice (fail-fast, con guía).
+
 ### Dónde se ve
 
 - **Micrófono** en el redactor (`ComposerBar`) y barra de estado de voz (`VoiceBar`).
 - Comandos `/voz`, `/dictar` y `/voz-off`.
 - **Ajustes → Voz** (`VoiceSettings`): motores, URL, clave, modelo, voz, velocidad,
-  formato de captura, umbral de silencio y topes.
+  formato de captura, umbral de silencio, topes, y el estado del binario y del modelo
+  del dictado local.
+- **Modelos → Modelos de voz (Whisper)**: buscar, listar, descargar y activar los
+  modelos de voz.
 - La sección `voice` de `app-config.json`.
 
 ---
@@ -700,7 +776,9 @@ Archivo: `<app-home>/config/app-config.json`
     "stt": { "provider": "NONE", "baseUrl": "", "apiKey": "", "model": "whisper-1", "language": "es" },
     "tts": { "provider": "NONE", "baseUrl": "", "apiKey": "", "model": "tts-1", "voice": "alloy" },
     "capture": { "sampleRate": 16000, "silenceThreshold": 0.02, "silenceTimeoutMs": 1500 },
-    "speakAnswers": true
+    "speakAnswers": true,
+    "models": [],                      // catálogo de modelos de voz (los .bin de whisper.cpp)
+    "modelsDir": "models/voz"          // dónde se guardan los descargados
   }
 }
 ```
@@ -722,8 +800,9 @@ Archivo: `<app-home>/config/app-config.json`
   implementado (el estado se muestra con `/mcp`).
 - La sección `voice` declara los motores de dictado y locución, el formato de captura y los
   topes de tiempo (`voice.capture.*`, `voice.maxSpeakChars`). Si la URL o la clave de voz
-  quedan vacías, `AppConfig.resolvedVoice()` **hereda** las del motor de inferencia activo. Se
-  edita en **Ajustes → Voz**.
+  quedan vacías, `AppConfig.resolvedVoice()` **hereda** las del motor de inferencia activo.
+  Además declara el **catálogo de modelos de voz** (`voice.models`) y su carpeta
+  (`voice.modelsDir`). Se edita en **Ajustes → Voz**.
 
 El árbol de chats vive aparte, en `<app-home>/config/chats.json` (esquema recursivo
 `StoredNode`: carpetas con hijos y chats con mensajes; las tarjetas de herramientas se guardan en
@@ -855,11 +934,14 @@ se testea sin Compose (`ScrollbarKeysTest`).
 │   ├── chats.json           # árbol de chats (carpetas + mensajes + tool cards)
 │   └── system_prompt.md     # prompt del sistema (editable)
 ├── models/                  # GGUF descargados
+│   └── voz/                 # modelos de voz (los .bin de whisper.cpp)
 ├── llama.cpp/               # clon + build (si buildFromSource)
+├── whisper.cpp/             # clon + build de whisper.cpp (si se instala desde la app)
 ├── api-docs/<id>/           # documentación por motor (API o "local")
 ├── logs/
 │   ├── llama-server.log
-│   └── llama-build.log
+│   ├── llama-build.log
+│   └── whisper-build.log
 ├── data/cache/              # repos GitHub clonados para indexación
 └── internal-docs/           # docs locales del usuario (.md, .txt, .rst, .adoc)
 ```

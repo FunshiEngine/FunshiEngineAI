@@ -17,6 +17,7 @@ información** — si no hay una referencia que lo respalde, lo dice.
 - **`voice-api/`** — Fachada de voz: captura el micrófono, detecta el fin de la frase y
   transcribe (dictado) o sintetiza la respuesta (locución). Motores remotos compatibles con
   OpenAI o **locales** (whisper.cpp, motor de voz del sistema). Sin SDK de voz y sin ktor.
+  También el catálogo de modelos de voz y el instalador/detector de `whisper-cli`.
 - **`estructuras/`** — Estructuras de datos reutilizables (árboles, colas, pilas).
 
 Cada módulo está dividido en paquetes por área (`llm.api`, `rag.agent`, `app.chat`…) — el mapa
@@ -83,6 +84,11 @@ referencia de API. |
   API compatible con OpenAI o **locales** (whisper.cpp y el motor de voz del sistema), así que
   el audio puede no salir nunca de tu máquina. Se configuran en **Ajustes → Voz** y con
   `/voz`, `/dictar` y `/voz-off`.
+- **Modelos de voz descargables**: en **Modelos → Modelos de voz (Whisper)** se buscan y
+  descargan de Hugging Face los modelos de transcripción (los `ggml-*.bin` de whisper.cpp),
+  con barra de progreso y reanudación, y "Usar para el dictado" los deja activos. El binario
+  `whisper-cli` se detecta o se instala desde Ajustes → Voz. Los modelos de voz van en un
+  catálogo **aparte** del de los LLM: nunca se confunden ni activan el motor equivocado.
 
 ## Regla central: no inventar sin referencia
 
@@ -196,7 +202,9 @@ Todo se configura en `app-home/config/app-config.json` (se crea solo en el prime
       "maxRecordingMs": 30000        // tope de la grabación
     },
     "speakAnswers": true,            // leer en voz alta la respuesta del chat por voz
-    "maxSpeakChars": 1200            // tope de caracteres hablados
+    "maxSpeakChars": 1200,           // tope de caracteres hablados
+    "models": [ … ],                 // catálogo de modelos de voz (los .bin de whisper.cpp)
+    "modelsDir": "models/voz"        // dónde se guardan los modelos de voz descargados
   }
 }
 ```
@@ -270,8 +278,11 @@ En desarrollo todo (config, modelos, docs internas) vive en `<raíz>/app-home`.
 - [x] **V1 — voz**: dictado y chat por voz sobre el **mismo** `send()` que el teclado, con
       motores de STT/TTS remotos o locales (whisper.cpp), sección de config `voice` (v5,
       apagada por defecto) y Ajustes → Voz.
+- [x] **V2 — modelos de voz**: descarga de los modelos de whisper desde Hugging Face (con
+      progreso y reanudación), binario `whisper-cli` detectable o instalable, y catálogo de
+      voz **separado** del de los LLM (nunca activan el motor equivocado).
 - [x] **Arquitectura modular**: un paquete por área en los tres módulos.
-- [x] **Tests**: 376 tests deterministas con JUnit 5 (`./gradlew test`), reglas en
+- [x] **Tests**: 402 tests deterministas con JUnit 5 (`./gradlew test`), reglas en
       `docs/TESTING.md`.
 - [x] **Verificador determinista de citas**: cada `[n]` de la respuesta se comprueba contra su
       fuente; la respuesta muestra si está respaldada.
