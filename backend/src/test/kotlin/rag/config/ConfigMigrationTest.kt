@@ -28,21 +28,26 @@ class ConfigMigrationTest {
         llm = LlmConfig(configVersion = 4),
     )
 
+    /** Config tal como quedó en v5 (con voz, con los modelos en `models/`). */
+    private fun configV5(): AppConfig = AppConfig(
+        llm = LlmConfig(configVersion = 5, modelsDir = "models"),
+    )
+
     @Test
-    fun `la version actual es la 5`() {
-        assertEquals(5, LlmConfig.CURRENT_CONFIG_VERSION)
+    fun `la version actual es la 6`() {
+        assertEquals(6, LlmConfig.CURRENT_CONFIG_VERSION)
     }
 
     @Test
-    fun `una config v3 se migra a la 5`() {
+    fun `una config v3 se migra a la 6`() {
         val migrada = configV3().migrated()
-        assertEquals(5, migrada.llm.configVersion)
+        assertEquals(6, migrada.llm.configVersion)
     }
 
     @Test
-    fun `una config v4 se migra a la 5`() {
+    fun `una config v4 se migra a la 6`() {
         val migrada = configV4().migrated()
-        assertEquals(5, migrada.llm.configVersion)
+        assertEquals(6, migrada.llm.configVersion)
     }
 
     @Test
@@ -81,12 +86,25 @@ class ConfigMigrationTest {
     }
 
     @Test
+    fun `la migracion a la v6 deja los modelos de texto en la carpeta de texto`() {
+        val migrada = configV5().migrated()
+        assertEquals("models/texto", migrada.llm.modelsDir)
+    }
+
+    @Test
+    fun `la migracion a la v6 no toca la carpeta de los modelos de voz`() {
+        val original = configV5()
+        val migrada = original.migrated()
+        assertEquals(original.voice.modelsDir, migrada.voice.modelsDir)
+    }
+
+    @Test
     fun `una config ya migrada no cambia`() {
-        val v5 = AppConfig(llm = LlmConfig(configVersion = 5))
-        val otra = v5.migrated()
-        assertEquals(v5.llm.configVersion, otra.llm.configVersion)
-        assertEquals(v5.tools, otra.tools)
-        assertEquals(v5.voice, otra.voice)
+        val v6 = AppConfig(llm = LlmConfig(configVersion = 6))
+        val otra = v6.migrated()
+        assertEquals(v6.llm.configVersion, otra.llm.configVersion)
+        assertEquals(v6.tools, otra.tools)
+        assertEquals(v6.voice, otra.voice)
     }
 
     @Test
@@ -95,7 +113,7 @@ class ConfigMigrationTest {
         val migrada = v1.migrated()
         assertTrue(migrada.llm.buildFromSource, "v1 → v2 activa buildFromSource")
         assertEquals(0L, migrada.llm.chatTimeoutMs, "v2 → v3 deja el timeout sin límite")
-        assertEquals(5, migrada.llm.configVersion)
+        assertEquals(6, migrada.llm.configVersion)
     }
 
     @Test

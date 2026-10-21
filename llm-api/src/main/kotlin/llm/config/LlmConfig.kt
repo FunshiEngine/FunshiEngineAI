@@ -69,7 +69,13 @@ data class LlmConfig(
     val hfRepo: String = "unsloth/Phi-4-mini-instruct-GGUF",
     val hfFile: String = "Phi-4-mini-instruct-Q4_K_M.gguf",
     val hfToken: String = "",
-    val modelsDir: String = "models",
+    /**
+     * Carpeta (relativa al `app-home`) donde viven los modelos de **texto** (chat).
+     *
+     * Es `models/texto` para que convivan con los de voz (`models/voz`) sin
+     * mezclarse: son archivos giantísimos y de finalidades distintas.
+     */
+    val modelsDir: String = "models/texto",
     /** Ruta al binario; vacío = autodetectar (`llama-server[.exe]` en PATH y candidatos). */
     val llamaServerPath: String = "",
     /** Repo git de llama.cpp a clonar. */
@@ -197,8 +203,10 @@ data class LlmConfig(
          * v3: `chatTimeoutMs=0` — sin límite de tiempo por respuesta.
          * v4: secciones `tools`, `outputs`, `latex` y `mcp` en la config de la app.
          * v5: sección `voice` (dictado y locución) en la config de la app.
+         * v6: los modelos de texto pasan a `models/texto` (dejan de compartir
+         *    carpeta con los de voz, que viven en `models/voz`).
          */
-        const val CURRENT_CONFIG_VERSION = 5
+        const val CURRENT_CONFIG_VERSION = 6
 
         /**
          * Catálogo inicial: el Phi-4-mini (el por defecto) + dos

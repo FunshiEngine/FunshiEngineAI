@@ -22,6 +22,59 @@ object AppPaths {
     fun resolve(p: String): Path = home.resolve(p).normalize()
 }
 
+/**
+ * Migración en disco de la carpeta de los modelos de **texto**: antes vivían
+ * en `<app-home>/models/` y ahora en `<app-home>/models/texto/`, para que
+ * convivan con los de voz (`<app-home>/models/voz/`) sin mezclarse.
+ *
+ * Reglas:
+ *
+ * - Se mueve **todo** lo que hay en la carpeta vieja **salvo** la carpeta de
+ *   voz (`voz`) y la propia carpeta destino (`texto`).
+ * - No se pisa nada: si en el destino ya hay un archivo con el mismo nombre,
+ *   el destino queda intacto. Si los dos pesan lo mismo, es el mismo modelo y
+ *   se borra el de la carpeta vieja; si no, el movimiento se considera
+ *   fallido (así la app no queda sin modelo).
+ * - Es idempotente: si se corta a mitad, al volver a arrancar sigue moviendo
+ *   lo que falta.
+ *
+ * Devuelve `true` si no quedó ningún modelo de texto en la carpeta vieja.
+ */
+internal fun moveLlmModelsToTextoDir(home: Path): Boolean {
+    val vieja = home.resolve("models")
+    val nueva = vieja.resolve("texto")
+    if (!Files.isDirectory(vieja)) return true
+    val items = try {
+        Files.list(vieja).use { it.toList() }
+    } catch (_: Exception) {
+        return false
+    }
+    var ok = true
+    for (item in items) {
+        val nombre = item.fileName.toString()
+        // La carpeta de voz ya está donde debe: no se toca.
+        if (nombre == "voz" || nombre == "texto") continue
+        val destino = nueva.resolve(nombre)
+        try {
+            Files.createDirectories(nueva)
+            if (Files.exists(destino)) {
+                val mismo = Files.isRegularFile(item) && Files.isRegularFile(destino) &&
+                    Files.size(item) == Files.size(destino)
+                if (mismo) {
+                    Files.deleteIfExists(item)
+                } else {
+                    ok = false
+                }
+            } else {
+                Files.move(item, destino)
+            }
+        } catch (_: Exception) {
+            ok = false
+        }
+    }
+    return ok
+}
+
 @Serializable
 data class GithubSource(
     val owner: String,
@@ -115,10 +168,26 @@ data class AppConfig(
      * del código antes de la migración): una config migrada se comporta igual.
      * v4 → v5: sección `voice` (dictado y locución). También es nueva: entra
      * **apagada**, así que una instalación migrada no cambia de comportamiento.
+     * v5 → v6: los modelos de texto pasan a `models/texto` (dejan de compartir
+     * carpeta con los de voz, que viven en `models/voz`). Esta **sí** mueve
+     * archivos: por eso [migrate] los mueve antes de guardar la config.
      */
     fun migrate(): AppConfig {
         if (llm.configVersion >= LlmConfig.CURRENT_CONFIG_VERSION) return this
-        return migrated().save()
+        val nueva = migrated()
+        // La carpeta de los modelos cambia: hay que mover los archivos ya
+        // descargados **antes** de guardar la config nueva. Si no se movieran,
+        // la app no encontraría el modelo y lo volvería a bajar (2 GB de nuevo).
+        // Si el movimiento no se puede hacer, se deja la carpeta vieja: el
+        // modelo sigue donde está y todo funciona igual.
+        val final = if (nueva.llm.modelsDir != llm.modelsDir &&
+            moveLlmModelsToTextoDir(AppPaths.home)
+        ) {
+            nueva
+        } else {
+            nueva.copy(llm = nueva.llm.copy(modelsDir = llm.modelsDir))
+        }
+        return final.save()
     }
 
     /**
@@ -131,6 +200,7 @@ data class AppConfig(
         var l = llm
         if (l.configVersion < 2) l = l.copy(buildFromSource = true)
         if (l.configVersion < 3) l = l.copy(chatTimeoutMs = 0L)
+        if (l.configVersion < 6) l = l.copy(modelsDir = "models/texto")
         l = l.copy(configVersion = LlmConfig.CURRENT_CONFIG_VERSION)
         return copy(llm = l)
     }
