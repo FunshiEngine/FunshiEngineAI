@@ -92,7 +92,7 @@ El módulo **no depende de ktor**: el HTTP es el `HttpClient` del JDK, igual que
 |---------|-----------|
 | `app` | `Main` (ventana, tema), `NavigationRail` (sidebar colapsable) |
 | `app.core` | Tipos compartidos: `UiState.kt` (`Screen`, `UiMessage`, `UiToolCall`, `UiProgress`), `ChatTree.kt` (`ChatNode`, `ChatRow`, `ChatTree`) |
-| `app.ui` | Render de contenido: `Markdown.kt` (parser + `MarkdownText`), `CodeBlock.kt` (resaltado, copiar, guardar), `MathRender.kt` (F5: TeX → imagen con JLaTeXMath) |
+| `app.ui` | Render de contenido: `Markdown.kt` (parser + `MarkdownText`), `CodeBlock.kt` (resaltado, copiar, guardar), `MathRender.kt` (F5: TeX → imagen con JLaTeXMath), `Scrollbar.kt` (scrollbar con el color del tema y control por teclado) |
 | `app.chat` | La pantalla de chat: `ChatViewModel` + áreas, `ChatCommands`, `ChatMessages`, `ChatPane`, `ChatSidebar`, `MessageBubble`, `ToolCallCard`, `ComposerBar`, `ChatScreen`, `ChatScrollbarAdapter`, `LoadingPane`, `ChatTools` (F7), `ChatVoice` + `VoiceBar` (V1) |
 | `app.screens` | `ModelsScreen`, `ApisScreen`, `SettingsPane`, `SettingsComponents`, `ToolsSettings` (F7), `VoiceSettings` (V1) |
 
@@ -790,9 +790,25 @@ falta un motor externo (whisper.cpp, motor de voz del sistema).
 | `app/screens/VoiceSettings.kt` | Ajustes → Voz: motores de dictado y locución, captura y topes |
 | `app/screens/SettingsComponents.kt` | `themeOption`, `RadioGroup` reutilizables |
 | `app/ui/Markdown.kt`, `app/ui/CodeBlock.kt` | Render de markdown y de bloques de código |
+| `app/ui/Scrollbar.kt` | `ThemedVerticalScrollbar`: scrollbar con el color del tema y **control por teclado** (Tab + ↑ ↓ / Re Pág / Av Pág / Inicio / Fin) |
 
 Los paneles largos (Motor, Config, Modelos) usan `verticalScroll` + `VerticalScrollbar`
 (`rememberScrollbarAdapter`, no `LazyColumn`) para conservar el scroll del mouse.
+
+### El scrollbar (color y teclado)
+
+El scrollbar de Compose es **negro con 12% de opacidad**: sobre el tema oscuro
+(es el de la app) es invisible, y el panel parece que no se desplaza. Por eso
+todos los scrollbars pasan por `app.ui.ThemedVerticalScrollbar`, que:
+
+- usa el color del tema (`onSurface` con 45% de opacidad, 85% al pasar el
+  mouse) y se pinta como "hover" cuando tiene el foco;
+- es **focusable**: con `Tab` se llega al thumb y con las flechas **↑ ↓** se
+  mueve el contenido **sin mouse** (`Re Pág`/`Av Pág` saltan una pantalla,
+  `Inicio`/`Fin` van a los extremos).
+
+La lógica de teclas está en la función pura `app.ui.scrollTargetForKey`, que
+se testea sin Compose (`ScrollbarKeysTest`).
 
 ---
 

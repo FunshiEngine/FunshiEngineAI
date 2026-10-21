@@ -2,7 +2,6 @@ package app.screens
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
-import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -27,6 +26,7 @@ import app.chat.removeModel
 import app.chat.searchModels
 import app.core.UiProgress
 import app.core.humanSize
+import app.ui.ThemedVerticalScrollbar
 import llm.catalog.HfGgufFile
 import llm.catalog.HfRepoHit
 import llm.catalog.ModelEntry
@@ -254,7 +254,7 @@ fun ModelsPane(vm: ChatViewModel) {
             Spacer(Modifier.height(16.dp))
         }
 
-        VerticalScrollbar(
+        ThemedVerticalScrollbar(
             adapter = rememberScrollbarAdapter(scroll),
             modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
         )

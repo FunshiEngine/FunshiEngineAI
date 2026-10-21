@@ -69,9 +69,27 @@
   **apagada** (`enabled: false`, motores `NONE`): la migración es invisible para
   una instalación existente.
 
+### 🩹 Correcciones de la misma versión
+
+- **El scrollbar se ve en el tema oscuro**: el de Compose es negro con 12% de
+  opacidad, así que sobre el fondo oscuro **era invisible** (el panel parecía
+  que no se desplazaba y no se veía dónde agarrarlo). Ahora todos los
+  scrollbars usan el color del tema (`onSurface`) y se highlight al pasar el
+  mouse.
+- **El scrollbar se mueve con el teclado**: en Compose 1.7 no es focusable ni
+  atiende teclas. Ahora con `Tab` se llega al thumb y con las flechas **↑ ↓**
+  se mueve el contenido (sin mouse), `Re Pág`/`Av Pág` saltan una pantalla e
+  `Inicio`/`Fin` van a los extremos. La lógica está en la función pura
+  `app.ui.scrollTargetForKey` (testeada).
+- **Los ajustes ya se repintan**: `ChatViewModel.config` era un `var` normal y
+  no estado de Compose, así que guardar un cambio **no repintaba nada**: el
+  interruptor de "Voz activada" no se movía, el motor de dictado no se
+  marcaba y los campos mostraban el valor viejo (aunque se guardara bien en
+  el archivo). Ahora `config` es `mutableStateOf`.
+
 ### 🧪 Tests
-- **367 tests** en total (voice-api 47, backend 244, frontend 44, llm-api 32)
-  — +60.
+- **376 tests** en total (voice-api 47, backend 244, frontend 53, llm-api 32)
+  — +69.
 - `voice-api`: `WavCodecTest` (ida y vuelta del WAV, formatos raros rechazados),
   `AudioResamplerTest` (downmix, remuestreo, audio ya en formato),
   `SilenceDetectorTest` (el silencio cierra la frase, el ruido no cuenta),
@@ -79,7 +97,8 @@
   motor), `VoiceSessionTest` (el ciclo con dobles: texto que llega, micrófono
   que se cierra, tope de grabación, error del motor).
 - `frontend`: `ChatVoiceTest` (el texto que se habla se limpia de markdown,
-  código y enlaces).
+  código y enlaces) y `ScrollbarKeysTest` (el scrollbar con teclado: flechas,
+  páginas, inicio y fin, y que nunca se pase del tope).
 - `backend`: `ResolvedVoiceTest` (la voz apagada no hereda nada, la URL y la
   clave vacías se heredan del motor activo, un endpoint local no pide clave) y
   `ConfigMigrationTest` actualizado a la v5.

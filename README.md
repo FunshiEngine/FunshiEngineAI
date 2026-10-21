@@ -271,7 +271,7 @@ En desarrollo todo (config, modelos, docs internas) vive en `<raíz>/app-home`.
       motores de STT/TTS remotos o locales (whisper.cpp), sección de config `voice` (v5,
       apagada por defecto) y Ajustes → Voz.
 - [x] **Arquitectura modular**: un paquete por área en los tres módulos.
-- [x] **Tests**: 367 tests deterministas con JUnit 5 (`./gradlew test`), reglas en
+- [x] **Tests**: 376 tests deterministas con JUnit 5 (`./gradlew test`), reglas en
       `docs/TESTING.md`.
 - [x] **Verificador determinista de citas**: cada `[n]` de la respuesta se comprueba contra su
       fuente; la respuesta muestra si está respaldada.

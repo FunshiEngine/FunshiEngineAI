@@ -1,7 +1,5 @@
 package app.chat
 
-import androidx.compose.foundation.ScrollbarStyle
-import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -19,6 +17,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.ui.ThemedVerticalScrollbar
 
 /** Pixeles "de más" al hacer scroll-to-bottom: el último mensaje suele ser más alto que el viewport. */
 private const val SCROLL_PX_TO_END = 1_000_000f
@@ -160,19 +159,10 @@ fun ChatPane(vm: ChatViewModel) {
                         )
                     }
                 }
-                VerticalScrollbar(
+                ThemedVerticalScrollbar(
                     adapter = scrollbarAdapter,
                     modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
-                    style = ScrollbarStyle(
-                        minimalHeight = 24.dp,
-                        thickness = 12.dp,
-                        shape = RoundedCornerShape(6.dp),
-                        hoverDurationMillis = 300,
-                        unhoverColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
-                        hoverColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
-                    ),
-                )
-            }
+                )            }
 
             // Barra de envío (fija abajo, dentro del área de contenido)
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)

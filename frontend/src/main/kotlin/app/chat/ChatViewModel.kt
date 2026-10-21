@@ -61,7 +61,16 @@ import voice.service.VoiceService
  */
 class ChatViewModel {
     internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    internal var config = AppConfig.loadOrCreate()
+    /**
+     * Config de la app.
+     *
+     * Es **estado de Compose** (`mutableStateOf`), no un `var` pelado: las
+     * pantallas de Ajustes leen `vm.config.<sección>` y la muestran
+     * (interruptores, campos, selectores). Si la config no fuera observable,
+     * guardar un cambio no repintaría nada y el control seguiría marcando el
+     * valor viejo (el interruptor de la voz "no se activaba").
+     */
+    internal var config by mutableStateOf(AppConfig.loadOrCreate())
     // Ambos servicios leen la config EN CADA ARRANQUE vía lambda ({ config.llm }):
     // si reciben la copia del constructor, activar una API o modelo no tiene efecto
     // y el arranque sigue exigiendo el modelo local (localhost) de la config inicial.

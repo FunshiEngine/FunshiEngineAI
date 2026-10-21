@@ -92,6 +92,9 @@ existe dentro del build de cada módulo.
   grabación se corta al tope y un fallo del motor vuelve como error.
 - `ChatVoiceTest` — el texto que se va a leer en voz alta se limpia (markdown,
   código, enlaces) y lo que se dicta acaba en el redactor.
+- `ScrollbarKeysTest` — el scrollbar con teclado: las flechas mueven una
+  línea, las páginas una pantalla, inicio/fin van a los extremos y nunca se
+  pasa del tope.
 - `ResolvedVoiceTest` — la voz apagada no hereda nada; si la URL o la clave
   están vacías, se heredan del motor de inferencia activo; un endpoint local no
   pide clave.
@@ -115,4 +118,4 @@ existe dentro del build de cada módulo.
 
 ## Cobertura actual
 
-367 tests (`llm-api` 32, `voice-api` 47, `backend` 244, `frontend` 44).
+376 tests (`llm-api` 32, `voice-api` 47, `backend` 244, `frontend` 53).

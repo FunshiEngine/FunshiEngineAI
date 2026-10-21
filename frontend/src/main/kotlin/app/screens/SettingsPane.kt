@@ -1,7 +1,6 @@
 package app.screens
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -26,6 +25,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.chat.ChatViewModel
+import app.ui.ThemedVerticalScrollbar
 import kotlin.math.floor
 import kotlin.math.roundToInt
 
@@ -92,7 +92,7 @@ fun SettingsPane(vm: ChatViewModel) {
             Spacer(Modifier.height(8.dp))
         }
 
-        VerticalScrollbar(
+        ThemedVerticalScrollbar(
             adapter = rememberScrollbarAdapter(scroll),
             modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
         )

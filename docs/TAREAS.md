@@ -112,7 +112,7 @@ Implementación por fases (orden acordado):
 
 ### 0.1 Voz: dictado y chat por voz (V1)
 
-**Estado:** IMPLEMENTADO (2026-10-21) — compilado, 367 tests en verde y app arrancada
+**Estado:** IMPLEMENTADO (2026-10-21) — compilado, 376 tests en verde y app arrancada
 sin crash. Diseño completo en `.agentes/plan-voz.md` (análisis, decisiones, tareas
 P0–P15).
 
@@ -152,6 +152,12 @@ Qué se hizo:
 - **Errores tipados**: `VoiceException` + `VoiceErrorCode` con código y `retryable`,
   igual que `LlmException`. Sin motor configurado, la UI lo dice y no falla en
   silencio.
+- **Ajustes que sí se repintan**: `ChatViewModel.config` es estado de Compose
+  (`mutableStateOf`): sin eso, guardar un cambio no repintaba la pantalla y el
+  interruptor de la voz "no se activaba".
+- **Scrollbar del tema y con teclado**: `app.ui.ThemedVerticalScrollbar` (el
+  de Compose es negro al 12% e invisible en el tema oscuro) y, con `Tab`, las
+  flechas **↑ ↓** mueven el panel sin mouse.
 
 Criterios de aceptación:
 

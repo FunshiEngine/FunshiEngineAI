@@ -1,7 +1,6 @@
 package app.screens
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -30,6 +29,7 @@ import app.chat.testApi
 import app.chat.useLocal
 import app.core.Screen
 import app.core.humanSize
+import app.ui.ThemedVerticalScrollbar
 import java.nio.file.Path
 import javax.swing.JFileChooser
 import javax.swing.SwingUtilities
@@ -397,7 +397,7 @@ fun ApisPane(vm: ChatViewModel) {
             )
         }
 
-        VerticalScrollbar(
+        ThemedVerticalScrollbar(
             adapter = rememberScrollbarAdapter(scroll),
             modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
         )

@@ -1,6 +1,5 @@
 package app.chat
 
-import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -38,6 +37,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.core.ChatRow
+import app.ui.ThemedVerticalScrollbar
 
 // ---------------------------------------------------------------------------
 // Sidebar de chats: árbol de carpetas con click derecho, renombrar y
@@ -134,7 +134,7 @@ internal fun ChatListSidebar(vm: ChatViewModel, modifier: Modifier = Modifier) {
         }
 
         // Barra de desplazamiento de la lista de chats (visible con muchos chats).
-        VerticalScrollbar(
+        ThemedVerticalScrollbar(
             adapter = rememberScrollbarAdapter(listState),
             modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
         )
