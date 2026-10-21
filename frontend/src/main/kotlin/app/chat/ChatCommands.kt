@@ -30,6 +30,9 @@ internal fun ChatViewModel.handleCommand(raw: String) {
         "power" -> cmdPower(arg)
         "tools" -> cmdTools()
         "mcp" -> cmdMcp()
+        "voz" -> cmdVoz()
+        "dictar" -> cmdDictar()
+        "voz-off" -> cmdVozOff()
         "permitir-archivos" -> cmdGrant(ToolCategory.FILES)
         "permitir-web" -> cmdGrant(ToolCategory.WEB)
         "permitir-mcp" -> cmdGrant(ToolCategory.MCP)
@@ -41,6 +44,16 @@ internal fun ChatViewModel.handleCommand(raw: String) {
     }
     updateLast(reply)
     persistActiveChat()
+    // Si el chat por voz mandó un comando, la respuesta del comando es lo
+    // que tiene que leer: si no, quedaría esperando hasta el timeout.
+    voiceAnswer?.let { pending ->
+        voiceAnswer = null
+        if (pending.question.trim() == raw.trim()) {
+            pending.deferred.complete(reply)
+        } else {
+            pending.deferred.complete("")
+        }
+    }
 }
 
 /** /help — lista de comandos disponibles y qué hace cada uno. */
@@ -54,6 +67,9 @@ internal fun ChatViewModel.cmdHelp(): String = """
     · `/power [low|medium|high]` — potencia de la respuesta (tokens de salida).
     · `/tools` — lista las herramientas que el modelo puede usar.
     · `/mcp` — estado de los servidores MCP declarados.
+    · `/voz` — arranca el chat por voz (escuchar → responder → hablar).
+    · `/dictar` — dicta un mensaje al redactor (no lo envía solo).
+    · `/voz-off` — corta el chat por voz o el dictado en curso.
     · `/permisos` — estado de los permisos de herramientas de este chat.
     · `/permitir-archivos` — concede permiso FILES en este chat.
     · `/permitir-web` — concede permiso WEB en este chat.
@@ -142,6 +158,61 @@ internal fun ChatViewModel.cmdTools(): String {
 
 /** /mcp — estado de los servidores MCP declarados en la configuración. */
 internal fun ChatViewModel.cmdMcp(): String = mcpStatusText()
+
+/* ---------------------------------------------------------------------------
+ * Voz (V1): dictado y chat por voz.
+ * ------------------------------------------------------------------------- */
+
+/** /voz — arranca (o corta) el chat por voz. */
+internal fun ChatViewModel.cmdVoz(): String {
+    if (voiceActive) {
+        stopVoiceChat()
+        return "Chat por voz terminado."
+    }
+    if (!config.voice.enabled) {
+        return "La voz está **apagada**. Activala en **Ajustes → Voz** " +
+            "(o en la sección `voice` de la config)."
+    }
+    val problemas = config.resolvedVoice().validate()
+    if (problemas.isNotEmpty()) {
+        return "La configuración de voz está incompleta:\n\n" +
+            problemas.joinToString("\n") { "· $it" } +
+            "\n\nRevisá **Ajustes → Voz**."
+    }
+    startVoiceChat()
+    if (!voiceActive) {
+        return voiceError.ifBlank { "No se pudo activar el chat por voz." }
+    }
+    return "Chat por voz **activado**: hablo, transcribo, el modelo responde y leo la respuesta.\n\n" +
+        "Cortalo con `/voz-off` (o con el botón \"Terminar voz\")."
+}
+
+/** /dictar — dicta el texto al redactor. */
+internal fun ChatViewModel.cmdDictar(): String {
+    if (!config.voice.enabled) {
+        return "La voz está **apagada**. Activala en **Ajustes → Voz**."
+    }
+    if (!config.resolvedVoice().hasStt) {
+        return "No hay motor de **dictado** configurado. Elegilo en **Ajustes → Voz**."
+    }
+    if (voiceListening) {
+        stopDictation()
+        return "Dictado cortado."
+    }
+    toggleDictation()
+    if (!voiceListening) {
+        return voiceError.ifBlank { "No se pudo empezar a escuchar." }
+    }
+    return "Escuchando… el texto va a aparecer en el redactor (no se envía solo)."
+}
+
+/** /voz-off — corta lo que esté sonando o esperando. */
+internal fun ChatViewModel.cmdVozOff(): String {
+    val habia = voiceActive || voiceListening
+    stopVoiceChat()
+    stopDictation()
+    return if (habia) "Voz cortada." else "No había nada de voz en curso."
+}
 
 /* ---------------------------------------------------------------------------
  * Permisos de herramientas (F3): por categoría y por chat.

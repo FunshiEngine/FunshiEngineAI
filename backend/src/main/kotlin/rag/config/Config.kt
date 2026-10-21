@@ -7,6 +7,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import llm.config.LlmConfig
 import rag.mcp.McpConfig
+import voice.config.VoiceConfig
 
 val AppJson = Json { prettyPrint = true; ignoreUnknownKeys = true; encodeDefaults = true }
 
@@ -69,6 +70,8 @@ data class AppConfig(
     val latex: LatexConfig = LatexConfig(),
     /** Servidores MCP declarados (F7; el transporte llega en la ronda siguiente). */
     val mcp: McpConfig = McpConfig(),
+    /** Voz: dictado por voz y chat por voz (V1). */
+    val voice: VoiceConfig = VoiceConfig(),
     /** Perfiles de color guardados por el usuario (tema + acento con nombre). */
     val uiColorProfiles: List<ColorProfile> = emptyList(),
 ) {
@@ -110,6 +113,8 @@ data class AppConfig(
      * v3 → v4: secciones `tools`, `outputs`, `latex` y `mcp`. Son nuevas, así que
      * entran con sus valores por defecto (los mismos que usaban las constantes
      * del código antes de la migración): una config migrada se comporta igual.
+     * v4 → v5: sección `voice` (dictado y locución). También es nueva: entra
+     * **apagada**, así que una instalación migrada no cambia de comportamiento.
      */
     fun migrate(): AppConfig {
         if (llm.configVersion >= LlmConfig.CURRENT_CONFIG_VERSION) return this
@@ -136,5 +141,26 @@ data class AppConfig(
         Files.createDirectories(file.parent)
         Files.writeString(file, AppJson.encodeToString(this))
         return this
+    }
+
+    /**
+     * Config de voz **resuelta**: si el dictado o la locución no tienen URL ni
+     * clave propias, se usan los del motor de inferencia activo.
+     *
+     * Así el caso común (la misma API que ya speakea, también transcribe) no
+     * obliga a repetir la URL y la clave en dos lados.
+     */
+    fun resolvedVoice(): VoiceConfig {
+        val v = voice
+        return v.copy(
+            stt = v.stt.copy(
+                baseUrl = v.stt.baseUrl.ifBlank { llm.remoteBaseUrl },
+                apiKey = v.stt.apiKey.ifBlank { llm.apiKey },
+            ),
+            tts = v.tts.copy(
+                baseUrl = v.tts.baseUrl.ifBlank { llm.remoteBaseUrl },
+                apiKey = v.tts.apiKey.ifBlank { llm.apiKey },
+            ),
+        )
     }
 }

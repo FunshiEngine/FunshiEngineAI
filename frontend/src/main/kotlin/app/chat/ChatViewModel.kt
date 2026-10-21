@@ -45,6 +45,7 @@ import rag.retrieval.KnowledgeBase
 import rag.store.ChatStore
 import rag.store.StoredMessage
 import rag.store.StoredToolCall
+import voice.service.VoiceService
 
 /**
  * Estado y flujo del chat: qué se ve en pantalla y qué se le pide al modelo.
@@ -79,6 +80,11 @@ class ChatViewModel {
     internal val tools = ToolRegistry()
     /** Servidores MCP (F7/F8): estado y herramientas descubiertas. */
     internal var mcp = McpManager(DefaultMcpConnector(config.mcp.timeoutMs), config.mcp.servers)
+    /**
+     * Voz (V1): elige los motores de dictado y locución según la config.
+     * La config se lee en cada llamada (lambda), como en `LlmService`.
+     */
+    internal val voiceService = VoiceService({ config.resolvedVoice() })
     internal var chatJob: Job? = null
     /** Cola de mensajes pendientes mientras no hay engine listo. */
     internal val pendingMessages = mutableListOf<Pair<String, List<ChatMessage>>>()
@@ -164,6 +170,57 @@ class ChatViewModel {
     /** Respuesta pendiente de la petición de permiso (la resuelve la UI). */
     internal var permissionAnswer: CompletableDeferred<PermissionDecision>? = null
 
+    // ---- voz (V1) ----
+
+    /**
+     * Texto del redactor. Vive en el ViewModel (y no en el composable) para
+     * que la voz pueda escribir en él: el dictado deja el texto transcrito
+     * **aquí**, listo para que el usuario lo revise y lo envíe.
+     */
+    var composerInput by mutableStateOf("")
+        internal set
+
+    /** El micrófono está grabando (dictado o chat por voz). */
+    var voiceListening by mutableStateOf(false)
+        internal set
+
+    /** Se está reproduciendo la respuesta por el altavoz. */
+    var voiceSpeaking by mutableStateOf(false)
+        internal set
+
+    /** El chat por voz está activo (bucle escuchar → responder → hablar). */
+    var voiceActive by mutableStateOf(false)
+        internal set
+
+    /** Último texto transcrito (o el que se está por hablar). */
+    var voiceTranscript by mutableStateOf("")
+        internal set
+
+    /** Estado del chat por voz ("Escuchando…", "Pensando…", "Hablando…"). */
+    var voiceStatus by mutableStateOf("")
+        internal set
+
+    /** Error de voz (micrófono, motor o configuración): se muestra en la barra. */
+    var voiceError by mutableStateOf("")
+        internal set
+
+    /** Corrutina del dictado o del chat por voz. */
+    internal var voiceJob: Job? = null
+
+    /**
+     * Respuesta que el chat por voz está esperando.
+     *
+     * Es el **único punto de enganche** entre la voz y el chat: el ViewModel
+     * la completa cuando termina una respuesta y la capa de voz la espera.
+     * Así el chat por voz usa el mismo `send()` que el chat de texto (RAG,
+     * herramientas, permisos y citas incluidos) sin duplicar nada.
+     *
+     * Lleva la pregunta para poder distinguir la respuesta que esperaba la
+     * voz de la de otro mensaje (si el usuario escribe mientras la voz
+     * espera).
+     */
+    internal var voiceAnswer: VoiceAwait? = null
+
     init {
         // Carga el árbol guardado y activa el primer chat (o crea uno vacío).
         tree.loadFrom(ChatStore.load())
@@ -188,6 +245,11 @@ class ChatViewModel {
         isDark = dark
         accentColor = accent
         config = config.copy(llm = config.llm.copy(uiDark = dark, uiAccent = accent)).save()
+    }
+
+    /** Escribe en el redactor (lo usa el teclado y el dictado por voz). */
+    fun setComposerInput(text: String) {
+        composerInput = text
     }
 
     /** Cambia el nivel de thinking (razonamiento) y lo persiste. */
@@ -355,7 +417,26 @@ class ChatViewModel {
                     }
                     updateLast(answer.text, sourceLabels, cards, attachments, citation)
                 }
+                // El chat por voz espera esta respuesta para leerla en voz
+                // alta: se le entrega por el único punto de enganche que hay
+                // entre la voz y el chat.
+                voiceAnswer?.let { pending ->
+                    voiceAnswer = null
+                    // Sólo es la respuesta esperada si la pregunta es la misma
+                    // que la voz mandó (si el usuario escribió otra cosa
+                    // mientras tanto, la voz sigue esperando).
+                    if (pending.question == text) {
+                        pending.deferred.complete(answer.text)
+                    } else {
+                        pending.deferred.complete("")
+                    }
+                }
             } catch (e: CancellationException) {
+                // Si se cancela la generación, la voz no queda esperando.
+                voiceAnswer?.let { pending ->
+                    voiceAnswer = null
+                    pending.deferred.complete("")
+                }
                 if (activeChatId == originChatId) updateLast("(cancelado)")
             } catch (e: Exception) {
                 if (activeChatId == originChatId) updateLast("⚠ ${friendly(e)}")
@@ -389,6 +470,12 @@ class ChatViewModel {
         // si el usuario paró, no se dispara nada automático después.
         queuedMessages = emptyList()
         chatJob?.cancel()
+        // Si el chat por voz esperaba una respuesta que ya no va a llegar
+        // (mensaje en cola descartado), se suelta: no queda esperando.
+        voiceAnswer?.let { pending ->
+            voiceAnswer = null
+            pending.deferred.complete("")
+        }
         if (pendingMessages.isNotEmpty()) {
             pendingMessages.clear()
             queued = false

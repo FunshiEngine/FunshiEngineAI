@@ -84,6 +84,11 @@ fun SettingsPane(vm: ChatViewModel) {
             // ---------- Herramientas ----------
             ToolsSettings(vm)
 
+            Spacer(Modifier.height(24.dp))
+
+            // ---------- Voz ----------
+            VoiceSettings(vm)
+
             Spacer(Modifier.height(8.dp))
         }
 

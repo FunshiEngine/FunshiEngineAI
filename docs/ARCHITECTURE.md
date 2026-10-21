@@ -20,6 +20,7 @@ FunshiEngineAI/
 ├── frontend/          # UI Compose Desktop (Kotlin)
 ├── backend/           # Motor RAG + bucle de tool calling
 ├── llm-api/           # Capa de inferencia LLM (local + remoto)
+├── voice-api/         # Capa de voz: audio + dictado (STT) + locución (TTS)
 ├── estructuras/       # Estructuras de datos reutilizables (árboles, colas, pilas)
 └── app-home/          # Directorio de trabajo en tiempo de ejecución (config, modelos, logs, docs)
 ```
@@ -28,10 +29,13 @@ Dependencias (una sola dirección, sin ciclos):
 
 ```
 frontend  ──►  backend  ──►  llm-api
-   └──────────────────────────►  (backend usa llm-api; el frontend usa ambos)
+    │              └─────►  voice-api
+    └─────►  estructuras
 ```
 
-`estructuras` es una biblioteca independiente; la usa el frontend (árbol de chats).
+`backend` expone `llm-api` y `voice-api` con `api(...)`, así que el frontend los ve sin
+declararlos dos veces. `estructuras` es una biblioteca independiente; la usa el frontend
+(árbol de chats).
 
 ---
 
@@ -58,12 +62,29 @@ en el request `tools[]`; la dependencia va en un solo sentido.
 
 | Paquete | Contenido |
 |---------|-----------|
-| `rag.config` | `AppConfig`, `AppPaths`, `RagConfig`, perfiles de color, `ToolsConfig`/`OutputsConfig`/`LatexConfig` (F7) |
+| `rag.config` | `AppConfig`, `AppPaths`, `RagConfig`, perfiles de color, `ToolsConfig`/`OutputsConfig`/`LatexConfig` (F7), `AppConfig.voice` + `AppConfig.resolvedVoice()` (V1) |
 | `rag.store` | `ChatStore`: persistencia del árbol de chats (`config/chats.json`) |
 | `rag.retrieval` | `Chunker`, `Bm25Index`, `KnowledgeBase`, `Sources`, modelos de documento |
 | `rag.engine` | `RagEngine`: arma el prompt (system + contexto + historial) y responde; `CitationVerifier` (F9): comprueba las citas de la respuesta contra sus fuentes |
 | `rag.agent` | Tool calling: `Tool`, `ToolResult`, `ToolContext`, `ToolRegistry`, `AgentLoop`, `PromptToolParser`, `ToolCallSanitizer`, `ToolPermissions`, `tools/GetTimeTool`, `tools/FileTools`, `tools/WebTools`, `tools/LatexTool` |
 | `rag.mcp` | MCP (F7/F8): `McpConnection` (contrato), `McpToolAdapter`, `McpManager`, `McpConfig`, `McpProtocol` (JSON-RPC), `McpStdioClient` (cliente por stdio) |
+
+### `voice-api` — capa de voz
+
+| Paquete | Contenido |
+|---------|-----------|
+| `voice.api` | Contratos: `AudioFormat`, `AudioClip`, `Transcription`, `SpeechToTextGateway`, `TextToSpeechGateway`, `TtsOptions` |
+| `voice.config` | `VoiceConfig`, `SttConfig`, `TtsConfig`, `CaptureConfig` y sus `validate()` (fail-fast) |
+| `voice.error` | `VoiceException`, `VoiceErrorCode` (errores tipados con código y `retryable`, como los del LLM) |
+| `voice.audio` | `WavCodec` (WAV PCM 16), `AudioResampler` (downmix + remuestreo, puro), `SilenceDetector` (RMS, puro), `Microphone`/`Playback` (captura y reproducción con `javax.sound.sampled`) |
+| `voice.net` | Cliente HTTP del JDK (el módulo **no** depende de ktor) |
+| `voice.stt` | `OpenAiSpeechToText` (API compatible con OpenAI), `WhisperCliSpeechToText` (whisper.cpp local) |
+| `voice.tts` | `OpenAiTextToSpeech` (API compatible con OpenAI), `SystemTextToSpeech` (motor del sistema) |
+| `voice.service` | `VoiceService`: fachada que elige los motores según la config (equivalente a `llm.service.LlmService`) |
+| `voice.session` | `VoiceSession`: el ciclo escuchar → transcribir → hablar |
+
+El módulo **no depende de ktor**: el HTTP es el `HttpClient` del JDK, igual que en
+`rag/retrieval/Sources.kt`.
 
 ### `frontend` — UI
 
@@ -72,8 +93,8 @@ en el request `tools[]`; la dependencia va en un solo sentido.
 | `app` | `Main` (ventana, tema), `NavigationRail` (sidebar colapsable) |
 | `app.core` | Tipos compartidos: `UiState.kt` (`Screen`, `UiMessage`, `UiToolCall`, `UiProgress`), `ChatTree.kt` (`ChatNode`, `ChatRow`, `ChatTree`) |
 | `app.ui` | Render de contenido: `Markdown.kt` (parser + `MarkdownText`), `CodeBlock.kt` (resaltado, copiar, guardar), `MathRender.kt` (F5: TeX → imagen con JLaTeXMath) |
-| `app.chat` | La pantalla de chat: `ChatViewModel` + áreas, `ChatCommands`, `ChatMessages`, `ChatPane`, `ChatSidebar`, `MessageBubble`, `ToolCallCard`, `ComposerBar`, `ChatScreen`, `ChatScrollbarAdapter`, `LoadingPane`, `ChatTools` (F7) |
-| `app.screens` | `ModelsScreen`, `ApisScreen`, `SettingsPane`, `SettingsComponents`, `ToolsSettings` (F7) |
+| `app.chat` | La pantalla de chat: `ChatViewModel` + áreas, `ChatCommands`, `ChatMessages`, `ChatPane`, `ChatSidebar`, `MessageBubble`, `ToolCallCard`, `ComposerBar`, `ChatScreen`, `ChatScrollbarAdapter`, `LoadingPane`, `ChatTools` (F7), `ChatVoice` + `VoiceBar` (V1) |
+| `app.screens` | `ModelsScreen`, `ApisScreen`, `SettingsPane`, `SettingsComponents`, `ToolsSettings` (F7), `VoiceSettings` (V1) |
 
 ---
 
@@ -471,6 +492,96 @@ Detalles que importan:
 
 ---
 
+## Voz: dictado y chat por voz (V1)
+
+La voz son **dos funciones sobre la misma maquinaria**:
+
+| Función | Qué hace | Dónde se dispara |
+|---------|----------|------------------|
+| **Dictado** | Se pulsa el micrófono, se habla y el texto transcrito **aparece en el redactor** | Botón de micrófono en `ComposerBar` (o `/dictar`) |
+| **Chat por voz** | Bucle `escuchar → enviar → responder → hablar` | `VoiceChatButton` en `VoiceBar` (o `/voz`) |
+
+La regla de oro: **el texto transcrito entra por `ChatViewModel.send()`**. El chat por voz
+**no es un segundo chat**: es el chat de siempre con otra entrada y otra salida. Por eso
+RAG, herramientas, permisos, citas y persistencia funcionan exactamente igual, sin duplicar
+nada.
+
+### Los cuatro bordes
+
+| Pieza | Responsabilidad |
+|-------|-----------------|
+| `voice.audio.Microphone` / `Playback` | Capturar y reproducir con `javax.sound.sampled` (JDK, sin dependencias nuevas) |
+| `voice.audio.SilenceDetector` | Saber cuándo terminó de hablar el usuario (energía RMS, puro y testeable) |
+| `voice.stt.*` / `voice.tts.*` | Transcribir y sintetizar (motor remoto o local) |
+| `voice.session.VoiceSession` | El ciclo escuchar → transcribir → hablar |
+
+`VoiceSession` **no sabe qué es un chat**: es audio puro y se testea con dobles. El bucle
+con el chat vive en el frontend (`app.chat.ChatVoice`), que sí sabe de chats.
+
+### El seam con el chat
+
+Todo el enganche es **un solo punto** en el ViewModel:
+
+```kotlin
+/** Respuesta que el chat por voz está esperando (la completa el ViewModel). */
+internal var voiceAnswer: VoiceAwait?
+```
+
+`sendInternal()` la completa cuando termina la respuesta y `handleCommand()` la completa
+para las respuestas de los comandos (`/voz-off`, `/help`…). La capa de voz **no toca** el
+bucle del agente, el RAG ni la persistencia: sólo usa `send()` y espera.
+
+```
+usuario habla
+   -> JdkMicrophoneCapture.open()          [Dispatchers.IO]
+   -> SilenceDetector.push()  -> "silencio" => fin de la frase
+   -> AudioResampler.convert(-> 16 kHz mono PCM 16)
+   -> SpeechToTextGateway.transcribe()
+   -> vm.send(texto)          <-- MISMO camino que el chat de texto
+   -> esperar vm.voiceAnswer
+   -> TextToSpeechGateway.speak(respuesta)
+```
+
+### Detalles que importan
+
+- **El micrófono se cierra mientras se reproduce la respuesta**: el ciclo es secuencial,
+  no paralelo, así que el micrófono no escucha su propia voz (alucinación).
+- **El dictado no se envía solo**: el texto transcrito queda en `composerInput` y el
+  usuario lo revisa y lo manda. Para eso el texto del redactor se movió del composable al
+  ViewModel (`ChatViewModel.composerInput`).
+- **Sin permisos de tool para la voz**: el permiso del proyecto es para acciones que pide
+  el **modelo**; el micrófono lo enciende el **usuario**, con un botón explícito.
+- **Audio PCM 16 bits mono little-endian** en todos los contratos; el remuestreo a 16 kHz
+  es una función ** pura** (`AudioResampler`), sin I/O y testeable.
+- **Ningún dato de audio sale de la máquina** si el motor de dictado es local
+  (`WHISPER_CLI`).
+- **Sin motor configurado, la UI lo dice**: `VoiceConfig.validate()` y `VoiceService`
+  lanzan `VoiceException` con el motivo (fail-fast) en vez de devolver un resultado vacío.
+- **Ciclo secuencial y cancelación**: `cancel()` libera la espera de voz, así que el botón
+  "Detener" también corta el chat por voz.
+
+### Motores
+
+| Función | Motor | Notas |
+|---------|-------|-------|
+| Dictado | `OPENAI` | `POST /v1/audio/transcriptions` (multipart armado a mano) |
+| Dictado | `WHISPER_CLI` | Local: `whisper-cli` de whisper.cpp con su modelo GGML |
+| Locución | `OPENAI` | `POST /v1/audio/speech` (se pide `wav`) |
+| Locución | `SYSTEM` | `powershell` (`System.Speech`), `say` o `espeak-ng` |
+
+Si la URL o la clave de voz quedan vacías, `AppConfig.resolvedVoice()` **hereda** las del
+motor de inferencia activo: el mismo modelo que contesta el chat suele hablar.
+
+### Dónde se ve
+
+- **Micrófono** en el redactor (`ComposerBar`) y barra de estado de voz (`VoiceBar`).
+- Comandos `/voz`, `/dictar` y `/voz-off`.
+- **Ajustes → Voz** (`VoiceSettings`): motores, URL, clave, modelo, voz, velocidad,
+  formato de captura, umbral de silencio y topes.
+- La sección `voice` de `app-config.json`.
+
+---
+
 ## Flujo de Datos Principal
 
 ```
@@ -505,6 +616,7 @@ sobre el ViewModel** (Kotlin no tiene `partial class`):
 | `ChatPermissions.kt` | permisos | Estado de permisos por chat y handshake `askPermission` / `answerPermission` con el backend |
 | `PermissionDialog.kt` | permisos | Diálogo "¿Permitir?" (Permitir siempre / Una vez / Cancelar) |
 | `AttachmentCard.kt` | adjuntos | Tarjeta de archivo producido por el modelo (Abrir / Guardar…) |
+| `ChatVoice.kt` | voz | Dictado, chat por voz y mutadores de la config de voz |
 
 Los miembros que hacen falta desde varias áreas son `internal` (visibles dentro del módulo del
 frontend, no fuera). Las pantallas que usan una extensión la importan explícitamente.
@@ -520,6 +632,13 @@ var queued by mutableStateOf(false)                // Hay mensajes en cola
 var progress by mutableStateOf<UiProgress?>(null)  // Progreso de descarga/arranque
 var status by mutableStateOf("")                   // Texto de estado
 var error by mutableStateOf("")                    // Error visible (banner)
+var composerInput by mutableStateOf("")            // Texto del redactor (el dictado también escribe aquí)
+var voiceListening by mutableStateOf(false)        // Grabando para el dictado
+var voiceSpeaking by mutableStateOf(false)         // Reproduciendo la respuesta
+var voiceActive by mutableStateOf(false)           // Chat por voz en marcha
+var voiceTranscript by mutableStateOf("")          // Última transcripción
+var voiceStatus by mutableStateOf("")              // Estado de la voz
+var voiceError by mutableStateOf("")               // Error de voz
 ```
 
 Reactividad: Compose se suscribe automáticamente a estos `MutableState`; los cambios producen
@@ -538,6 +657,9 @@ recomposición granular.
 | `LocalServerManager` | Dispatchers.IO | ProcessBuilder, health polling |
 | `RagEngine.prepare` / `AgentLoop` | Dispatchers.IO | HTTP streaming al gateway + ejecución de herramientas |
 | `ChatViewModel.testApi` | Dispatchers.IO + withTimeout(20 s) | GET /models de prueba ("Probar conexión") |
+| `JdkMicrophoneCapture` / `JdkAudioPlayback` | Dispatchers.IO | Captura y reproducción de audio (`javax.sound.sampled`) |
+| `voice.net.Http` (STT/TTS remoto) | Dispatchers.IO | HTTP con el `HttpClient` del JDK |
+| `WhisperCliSpeechToText` / `SystemTextToSpeech` | Dispatchers.IO | Proceso externo (whisper.cpp) o motor de voz del sistema |
 | `JFileChooser` | EDT de Swing | Diálogo "Guardar como…" / "Agregar archivos…" |
 | UI updates | Dispatchers.Main | MutableState -> recomposición Compose |
 
@@ -553,7 +675,7 @@ Archivo: `<app-home>/config/app-config.json`
 ```json
 {
   "llm": {
-    "configVersion": 4,
+    "configVersion": 5,
     "mode": "LOCAL",
     "hfRepo": "unsloth/Phi-4-mini-instruct-GGUF",
     "hfFile": "Phi-4-mini-instruct-Q4_K_M.gguf",
@@ -572,24 +694,36 @@ Archivo: `<app-home>/config/app-config.json`
   "tools": { "enabled": true, "timeoutMs": 60000 },
   "outputs": { "dir": "outputs", "maxFileMb": 5, "maxDownloadMb": 50 },
   "latex": { "engine": "", "timeoutMs": 60000, "maxDocumentKb": 1024 },
-  "mcp": { "servers": [] }
+  "mcp": { "servers": [] },
+  "voice": {
+    "enabled": false,
+    "stt": { "provider": "NONE", "baseUrl": "", "apiKey": "", "model": "whisper-1", "language": "es" },
+    "tts": { "provider": "NONE", "baseUrl": "", "apiKey": "", "model": "tts-1", "voice": "alloy" },
+    "capture": { "sampleRate": 16000, "silenceThreshold": 0.02, "silenceTimeoutMs": 1500 },
+    "speakAnswers": true
+  }
 }
 ```
 
 - Carga: `AppConfig.loadOrCreate()` (crea defaults + system prompt + carpeta docs si es la
   primera vez).
 - Persistencia: `config.save()` atómica (JSON pretty-print).
-- **Migración por `configVersion`**: la versión actual es **4**. v1→v2: `buildFromSource` pasa a
+- **Migración por `configVersion`**: la versión actual es **5**. v1→v2: `buildFromSource` pasa a
   `true` y se eliminan las APIs localhost prefijadas. v2→v3: `chatTimeoutMs = 0` (sin límite de
   tiempo por respuesta). v3→v4: se agregan las secciones `tools`, `outputs`, `latex` y `mcp`,
   **con los mismos valores que usaban las constantes del código**: una instalación migrada se
-  comporta exactamente igual que antes.
+  comporta exactamente igual que antes. v4→v5: se agrega la sección `voice`, **apagada**
+  (`enabled: false`, motores `NONE`): la voz entra sin cambiar el comportamiento de nadie.
 - Las secciones `tools`, `outputs` y `latex` **no son decorativas**: los lee el código (topes de
   tamaño, motor de LaTeX, timeout por herramienta) y se editan en **Ajustes → Herramientas**.
 - La sección `mcp` declara los servidores MCP (id, nombre, transporte, comando/args/env o URL,
   habilitado) y el timeout de las peticiones (`mcp.timeoutMs`). Con transporte **stdio** el
   servidor se lanza como proceso y se le habla MCP; con `http` el estado lo dice: todavía no está
   implementado (el estado se muestra con `/mcp`).
+- La sección `voice` declara los motores de dictado y locución, el formato de captura y los
+  topes de tiempo (`voice.capture.*`, `voice.maxSpeakChars`). Si la URL o la clave de voz
+  quedan vacías, `AppConfig.resolvedVoice()` **hereda** las del motor de inferencia activo. Se
+  edita en **Ajustes → Voz**.
 
 El árbol de chats vive aparte, en `<app-home>/config/chats.json` (esquema recursivo
 `StoredNode`: carpetas con hijos y chats con mensajes; las tarjetas de herramientas se guardan en
@@ -625,6 +759,11 @@ data class LlmException(
 - Los errores del modelo en tool calling **no** son excepciones: son feedback (`Invalid.reason`)
   que vuelve al modelo para que reintente.
 
+La voz replica el patrón con `voice.error.VoiceException` + `VoiceErrorCode`
+(`CONFIG_INVALIDA`, `MICROFONO_NO_DISPONIBLE`, `TRANSCRIPCION_FALLIDA`, `LOCUCION_FALLIDA`,
+`TIMEOUT`, `CANCELADO`): mismo código, mismo `retryable`, misma guía de instalación cuando
+falta un motor externo (whisper.cpp, motor de voz del sistema).
+
 ---
 
 ## Pantallas y Componentes (Frontend)
@@ -640,12 +779,15 @@ data class LlmException(
 | `app/chat/ToolCallCard.kt` | Tarjeta de herramienta: nombre, argumentos, estado y resultado |
 | `app/chat/AttachmentCard.kt` | Tarjeta de adjunto: nombre, tamaño, tipo y acciones Abrir / Guardar… |
 | `app/chat/PermissionDialog.kt` | Diálogo de permiso de herramienta (Permitir siempre / Una vez / Cancelar) |
-| `app/chat/ComposerBar.kt` | Redactor, cola de mensajes y botones enviar/detener |
+| `app/chat/ComposerBar.kt` | Redactor, cola de mensajes y botones enviar/detener (y el de micrófono) |
+| `app/chat/ChatVoice.kt` | Estado y operaciones de voz: dictado, chat por voz y mutadores de la config de voz |
+| `app/chat/VoiceBar.kt` | Barra de estado de voz, botón de chat por voz y botón de dictado |
 | `app/chat/ChatScrollbarAdapter.kt` | Scrollbar de altura estable (no salta con respuestas largas) |
 | `app/chat/LoadingPane.kt` | Pantalla de carga completa (fallback + reintentar) |
 | `app/screens/ModelsScreen.kt` | Catálogo de modelos: descargar/activar, agregar repo de HF |
 | `app/screens/ApisScreen.kt` | Motor: LOCAL/REMOTE, colección de APIs, prueba de conexión, docs por API |
-| `app/screens/SettingsPane.kt` | Tema claro/oscuro, color de acento |
+| `app/screens/SettingsPane.kt` | Tema claro/oscuro, color de acento (y la sección de voz) |
+| `app/screens/VoiceSettings.kt` | Ajustes → Voz: motores de dictado y locución, captura y topes |
 | `app/screens/SettingsComponents.kt` | `themeOption`, `RadioGroup` reutilizables |
 | `app/ui/Markdown.kt`, `app/ui/CodeBlock.kt` | Render de markdown y de bloques de código |
 
@@ -666,6 +808,8 @@ Los paneles largos (Motor, Config, Modelos) usan `verticalScroll` + `VerticalScr
    `NavigationRail`.
 5. **Config extra**: extiende `LlmConfig` / `RagConfig` (serialización automática con
    `@Serializable`).
+6. **Nuevo motor de voz**: implementa `SpeechToTextGateway` o `TextToSpeechGateway` en
+   `voice-api` y regístralo en `voice.service.VoiceService` (la app no cambia).
 
 ---
 
@@ -679,6 +823,10 @@ Los paneles largos (Motor, Config, Modelos) usan `verticalScroll` + `VerticalScr
 - **TeX Live o MiKTeX (opcional, sólo para `latex_compile`)**: sin él, la
   matemática del chat funciona igual (JLaTeXMath) y la tool devuelve un error
   con la guía de instalación.
+- **whisper.cpp (opcional, sólo para el dictado local)**: el binario `whisper-cli` y su
+  modelo GGML. Sin él, el dictado puede usar la API remota.
+- **Un micrófono (opcional)**: sin micrófono, la voz lo dice con un error tipado
+  (`MICROFONO_NO_DISPONIBLE`) y el resto de la app sigue igual.
 
 ---
 

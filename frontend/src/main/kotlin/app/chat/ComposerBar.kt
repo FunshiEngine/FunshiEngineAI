@@ -13,22 +13,22 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * Barra de envío: campo de texto, botón (Enviar / Detener / Cancelar envío) y
- * la cola de mensajes escritos mientras la IA respondía.
+ * Barra de envío: campo de texto, botón (Enviar / Detener / Cancelar envío),
+ * el micrófono del dictado y la cola de mensajes escritos mientras la IA
+ * respondía.
  *
- * El texto vive en el padre ([ChatPane]) para que la tecla Enter y el botón
- * compartan exactamente el mismo camino de envío.
+ * El texto vive en el ViewModel (`composerInput`) para que la tecla Enter, el
+ * botón y el **dictado por voz** compartan exactamente el mismo camino de
+ * envío.
  */
 @Composable
 internal fun ComposerBar(
     vm: ChatViewModel,
-    input: String,
-    onInputChange: (String) -> Unit,
     focusRequester: FocusRequester,
 ) {
     fun submit() {
-        vm.send(input)
-        onInputChange("")
+        vm.send(vm.composerInput)
+        vm.setComposerInput("")
         // El foco se queda en el redactor: si la IA está respondiendo, el
         // mensaje se encola y se podrá seguir escribiendo.
         if (vm.ready) focusRequester.requestFocus()
@@ -41,8 +41,8 @@ internal fun ComposerBar(
                 verticalAlignment = Alignment.Bottom,
             ) {
                 OutlinedTextField(
-                    value = input,
-                    onValueChange = onInputChange,
+                    value = vm.composerInput,
+                    onValueChange = vm::setComposerInput,
                     modifier = Modifier.weight(1f).focusRequester(focusRequester).onPreviewKeyEvent { e ->
                         if (e.key == androidx.compose.ui.input.key.Key.Enter &&
                             e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown &&
@@ -66,13 +66,16 @@ internal fun ComposerBar(
                     enabled = vm.ready,
                     maxLines = 5,
                 )
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(4.dp))
+                // Micrófono: dicta el texto al redactor (no lo envía solo).
+                DictationButton(vm)
+                Spacer(Modifier.width(4.dp))
                 if (vm.busy) {
                     Button(onClick = vm::cancel) { Text("Detener") }
                 } else if (vm.queued) {
                     Button(onClick = vm::cancel) { Text("Cancelar envío") }
                 } else {
-                    Button(onClick = ::submit, enabled = vm.ready && input.isNotBlank()) { Text("Enviar") }
+                    Button(onClick = ::submit, enabled = vm.ready && vm.composerInput.isNotBlank()) { Text("Enviar") }
                 }
             }
             // Cola de mensajes escritos mientras la IA respondía:

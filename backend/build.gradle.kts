@@ -5,6 +5,8 @@ plugins {
 
 dependencies {
     api(project(":llm-api"))
+    // Voz: audio, dictado y locución (módulo hermano de llm-api).
+    api(project(":voice-api"))
 
     // Tests: JUnit 5. Ver docs/TESTING.md.
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")

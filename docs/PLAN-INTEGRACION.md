@@ -3,6 +3,11 @@
 Documento de plan (diseño). La implementación se sigue en `docs/TAREAS.md` y el
 historial en `docs/CHANGES.md`.
 
+> **Nota:** la voz (dictado y chat por voz) es una línea aparte y **no** forma parte
+> de las fases F1–F9 de este documento: su plan vive en
+> [`.agentes/plan-voz.md`](../.agentes/plan-voz.md) y su estado en
+> `docs/TAREAS.md` §0.1.
+
 ---
 
 ## 1. Contexto y objetivo
@@ -578,7 +583,7 @@ constantes del código, así que una instalación migrada se comporta igual.
 | **F7** | Contrato MCP + registro con orígenes + config v4 + pantalla de permisos + documentación | F1–F4 | ✅ 2026-10-20 |
 | **F8** | Cliente MCP real por stdio (JSON-RPC propio, sin SDK oficial) | F7 | ✅ 2026-10-20 |
 | **F9** | Verificador determinista de citas (post-generación) + distintivo en el chat | F1 | ✅ 2026-10-20 |
-| **T** | Infraestructura de tests (JUnit 5) + 307 tests deterministas | — | ✅ 2026-10-20 |
+| **T** | Infraestructura de tests (JUnit 5) + 367 tests deterministas | — | ✅ 2026-10-21 |
 
 F2 es independiente de F1 y puede hacerse en paralelo.
 

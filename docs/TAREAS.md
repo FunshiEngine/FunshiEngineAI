@@ -104,9 +104,76 @@ Implementación por fases (orden acordado):
       `backend/rag/engine/CitationVerifier.kt` (puro: literal, sin detalles
       inventados, paráfrasis), `StoredCitation` persistida y
       `CitationBadge` en la burbuja del mensaje.
-- [x] **Infraestructura de tests**: JUnit 5 en los tres módulos,
-      `rag.test.runTest { }` como helper y 307 tests deterministas
+- [x] **Infraestructura de tests**: JUnit 5 en los módulos,
+      `rag.test.runTest { }` como helper y 367 tests deterministas
       (reglas en `docs/TESTING.md`).
+
+---
+
+### 0.1 Voz: dictado y chat por voz (V1)
+
+**Estado:** IMPLEMENTADO (2026-10-21) — compilado, 367 tests en verde y app arrancada
+sin crash. Diseño completo en `.agentes/plan-voz.md` (análisis, decisiones, tareas
+P0–P15).
+
+Qué se hizo:
+
+- **Módulo nuevo `voice-api`** (hermano de `llm-api`), expuesto por `backend` con
+  `api(project(":voice-api"))` y heredado por `frontend`. **No usa ktor**: el HTTP es
+  el `HttpClient` del JDK, igual que en `rag/retrieval/Sources.kt`. Deps: sólo
+  coroutines y kotlinx-serialization.
+- **Dictado por voz**: el micrófono del redactor transcribe y **deja el texto en el
+  redactor** (no se envía solo). Para eso el texto del redactor se movió del
+  composable al ViewModel (`ChatViewModel.composerInput`).
+- **Chat por voz**: bucle `escuchar → enviar → responder → hablar`. El texto
+  transcrito entra por `ChatViewModel.send()`, o sea por **el mismo camino que el
+  chat de texto**: RAG, herramientas, permisos, citas y persistencia funcionan
+  igual. No hay un segundo chat.
+- **Un solo seam** entre la voz y el chat: `ChatViewModel.voiceAnswer`
+  (pregunta + `CompletableDeferred<String>`), completado en `sendInternal()` y en
+  `handleCommand()`. La capa de voz no toca el bucle del agente.
+- **Motores**: STT `OPENAI` (`POST /v1/audio/transcriptions`) y `WHISPER_CLI`
+  (whisper.cpp local, el audio no sale de la máquina); TTS `OPENAI`
+  (`POST /v1/audio/speech`) y `SYSTEM` (`powershell`/`say`/`espeak-ng`).
+- **Audio**: PCM 16 bits mono little-endian en todos los contratos; downmix y
+  remuestreo a 16 kHz con funciones **puras** (`AudioResampler`).
+- **Fin de habla**: detector de silencio por **RMS** (`SilenceDetector`), con umbral
+  y topes configurables. El micrófono se **cierra** mientras se reproduce la
+  respuesta (ciclo secuencial: no se escucha a sí mismo).
+- **Sin permisos de tool para la voz**: el micrófono lo enciende el usuario, no
+  el modelo.
+- **Config**: sección `voice` en `app-config.json`, `configVersion` **4 → 5**. La
+  voz entra **apagada** (`enabled: false`), así que la migración es invisible.
+  `AppConfig.resolvedVoice()` hereda URL y clave del motor de inferencia activo si
+  quedan vacías.
+- **UI**: botón de micrófono en `ComposerBar`, barra de voz (`VoiceBar`) con el
+  botón de chat por voz, comandos `/voz`, `/dictar` y `/voz-off`, y **Ajustes → Voz**
+  (`VoiceSettings`).
+- **Errores tipados**: `VoiceException` + `VoiceErrorCode` con código y `retryable`,
+  igual que `LlmException`. Sin motor configurado, la UI lo dice y no falla en
+  silencio.
+
+Criterios de aceptación:
+
+- [x] El micrófono del redactor transcribe la voz y deja el texto en el redactor.
+- [x] El chat por voz usa el mismo camino que el chat de texto (RAG, herramientas,
+      permisos, citas y persistencia).
+- [x] La respuesta se lee en voz alta y el ciclo vuelve a escuchar.
+- [x] Ningún dato de audio sale de la máquina si el motor STT es local.
+- [x] Sin motor configurado, la UI lo dice y no falla en silencio.
+- [x] Error tipado (`VoiceException`) con código y `retryable`.
+- [x] Config `voice` apagada por defecto; la migración v4 → v5 no cambia el
+      comportamiento de una instalación existente.
+- [x] Tests deterministas: sin red, sin micrófono, sin esperas.
+
+Pendiente (fuera de V1, ideas):
+
+- [ ] Un **tool `speak`** que el modelo pueda pedir (hoy la voz la enciende el
+      usuario).
+- [ ] **Voz por streaming** del LLM: leer la respuesta mientras se genera en vez
+      de esperar a que termine.
+- [ ] **Hotwords / vocabulario del motor** en la transcripción (nombres propios del
+      proyecto).
 
 ---
 

@@ -26,7 +26,6 @@ private const val SCROLL_PX_TO_END = 1_000_000f
 /** Chat con lista de conversaciones, scrollbar, cancelar, editar y borrar. */
 @Composable
 fun ChatPane(vm: ChatViewModel) {
-    var input by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val scrollbarAdapter = rememberStableChatScrollbarAdapter(listState, vm.activeChatId)
     val focusRequester = remember { FocusRequester() }
@@ -114,9 +113,14 @@ fun ChatPane(vm: ChatViewModel) {
                     Spacer(Modifier.width(12.dp))
                     Text(vm.status, Modifier.weight(1f), fontSize = 12.sp, maxLines = 2)
                     TextButton(onClick = vm::reindex, enabled = vm.ready && !vm.busy) { Text("Reindexar") }
+                    // Chat por voz (V1): escuchar → responder → hablar.
+                    VoiceChatButton(vm)
                 }
             }
             if (!vm.ready) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+
+            // Estado del micrófono y del chat por voz (V1).
+            VoiceBar(vm)
 
             // Mensajes: weight(1f) deja SIEMPRE espacio para la barra de envío.
             Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -172,7 +176,7 @@ fun ChatPane(vm: ChatViewModel) {
 
             // Barra de envío (fija abajo, dentro del área de contenido)
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            ComposerBar(vm, input, { input = it }, focusRequester)
+            ComposerBar(vm, focusRequester)
         }
     }
 

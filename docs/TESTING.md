@@ -12,16 +12,17 @@ comportamiento y cero dependencias de la red.
 ./gradlew check                # test + verificaciones
 ```
 
-Sin argumentos: `test` corre los tests de los cuatro módulos (`llm-api`,
-`backend`, `frontend`, `estructuras`).
+Sin argumentos: `test` corre los tests de los cinco módulos (`llm-api`,
+`voice-api`, `backend`, `frontend`, `estructuras`).
 
 ## Dónde viven
 
 | Módulo     | Ruta                          | Qué se testea                        |
 |------------|-------------------------------|--------------------------------------|
 | `llm-api`  | `llm-api/src/test/kotlin`     | Config del LLM, validación fail-fast |
+| `voice-api` | `voice-api/src/test/kotlin`   | Audio, silencio, config y sesión de voz |
 | `backend`  | `backend/src/test/kotlin`     | Tools, permisos, sanitizador, MCP, config |
-| `frontend` | `frontend/src/test/kotlin`    | Markdown, render de math              |
+| `frontend` | `frontend/src/test/kotlin`    | Markdown, render de math, voz del chat |
 | `estructuras` | `estructuras/src/test/kotlin` | (reservado)                       |
 
 Cada módulo declara su propia configuración en su `build.gradle.kts` (misma
@@ -73,8 +74,27 @@ existe dentro del build de cada módulo.
   misma JVM del test hace de servidor MCP (`FakeMcpServer`), así que se
   prueban el pipe, el handshake, el cierre del proceso y el log a stderr. Sin
   red y sin instalar nada.
-- `ConfigMigrationTest` — la migración v3 → v4 tiene que ser invisible: una
+- `ConfigMigrationTest` — la migración v3 → v5 tiene que ser invisible: una
   config vieja se comporta exactamente igual que antes.
+- `WavCodecTest` — el WAV PCM 16 se codifica y se decodifica; un archivo con
+  otro formato se rechaza con un error explícito.
+- `AudioResamplerTest` — el downmix a mono promedia los canales y el remuestreo
+  a 16 kHz baja (o sube) la cantidad de muestras sin tocar un audio que ya está
+  en el formato pedido.
+- `SilenceDetectorTest` — el silencio cierra la frase, el ruido corto no cuenta
+  como frase y el detector se reinicia como nuevo.
+- `VoiceConfigTest` — la validación fail-fast: falta de URL, de clave, de modelo
+  de whisper, umbrales fuera de rango y topes incoherentes.
+- `VoiceServiceTest` — cada motor se elige por la config, y un motor mal
+  configurado falla rápido en vez de devolver nada.
+- `VoiceSessionTest` — el ciclo escuchar → transcribir → hablar con dobles: la
+  voz escuchada llega como texto, el micrófono se cierra al terminar, la
+  grabación se corta al tope y un fallo del motor vuelve como error.
+- `ChatVoiceTest` — el texto que se va a leer en voz alta se limpia (markdown,
+  código, enlaces) y lo que se dicta acaba en el redactor.
+- `ResolvedVoiceTest` — la voz apagada no hereda nada; si la URL o la clave
+  están vacías, se heredan del motor de inferencia activo; un endpoint local no
+  pide clave.
 - `ChunkerTest` / `Bm25IndexTest` / `KnowledgeBaseTest` — el troceado, el
   orden de relevancia y la carga de la documentación.
 - `RagEngineTest` — lo que ve el modelo: contexto numerado, historial
@@ -95,4 +115,4 @@ existe dentro del build de cada módulo.
 
 ## Cobertura actual
 
-307 tests (`llm-api` 32, `backend` 238, `frontend` 37).
+367 tests (`llm-api` 32, `voice-api` 47, `backend` 244, `frontend` 44).

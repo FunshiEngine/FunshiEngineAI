@@ -196,8 +196,9 @@ data class LlmConfig(
          * v2: `buildFromSource=true` por defecto y sin APIs localhost prefijadas.
          * v3: `chatTimeoutMs=0` — sin límite de tiempo por respuesta.
          * v4: secciones `tools`, `outputs`, `latex` y `mcp` en la config de la app.
+         * v5: sección `voice` (dictado y locución) en la config de la app.
          */
-        const val CURRENT_CONFIG_VERSION = 4
+        const val CURRENT_CONFIG_VERSION = 5
 
         /**
          * Catálogo inicial: el Phi-4-mini (el por defecto) + dos

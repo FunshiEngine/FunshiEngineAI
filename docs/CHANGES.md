@@ -1,5 +1,98 @@
 # Registro de Cambios - FunshiEngineAI
 
+## v0.13.0 (2026-10-21) — V1: voz en el chat (dictado + chat por voz)
+
+### ✨ Nuevas Características
+
+#### La app ahora habla y escucha
+- **Dictado por voz**: el botón de micrófono del redactor graba, detecta el
+  fin de la frase, transcribe y **deja el texto en el redactor**. No se envía
+  solo: el usuario lo revisa y lo manda como cualquier otro mensaje.
+- **Chat por voz**: el bucle `escuchar → enviar → responder → hablar`. La
+  respuesta se lee en voz alta (interruptor `voice.speakAnswers`) y el ciclo
+  vuelve a escuchar. Comandos `/voz`, `/dictar` y `/voz-off`.
+- **No es un segundo chat**: el texto transcrito entra por
+  `ChatViewModel.send()`, o sea por **el mismo camino que el chat de texto**.
+  RAG, herramientas, permisos, citas y persistencia funcionan exactamente igual.
+
+#### Módulo nuevo `voice-api`
+- **`voice-api/`** (nuevo, hermano de `llm-api`): audio, dictado, locución y
+  sesión de voz. Lo expone `backend` con `api(project(":voice-api"))` y lo
+  hereda `frontend`. **No depende de ktor**: el HTTP es el `HttpClient` del
+  JDK, igual que en `rag/retrieval/Sources.kt`. Sin SDK de voz (el mismo
+  criterio que con el SDK de MCP: adoptarlo exigiría subir el toolchain).
+- **Paquetes**: `voice.api` (contratos), `voice.config`, `voice.error`,
+  `voice.audio`, `voice.net`, `voice.stt`, `voice.tts`, `voice.service`,
+  `voice.session`.
+
+#### Motores de voz
+| Función | Motor | Notas |
+|---------|-------|-------|
+| Dictado | `OPENAI` | `POST /v1/audio/transcriptions` (multipart armado a mano) |
+| Dictado | `WHISPER_CLI` | Local: `whisper-cli` de whisper.cpp con su modelo GGML |
+| Locución | `OPENAI` | `POST /v1/audio/speech` (se pide `wav`) |
+| Locución | `SYSTEM` | `powershell` (`System.Speech`), `say` o `espeak-ng` |
+
+- **Privacidad**: con el motor local, **ningún audio sale de la máquina**.
+- **Sin motor configurado, la UI lo dice**: `VoiceConfig.validate()` y
+  `VoiceService` lanzan `VoiceException` (fail-fast) en vez de devolver un
+  resultado vacío.
+- Si la URL o la clave de voz quedan vacías, se **heredan** del motor de
+  inferencia activo (`AppConfig.resolvedVoice()`).
+
+#### Detalles que importan
+- **Audio PCM 16 bits mono little-endian** en todos los contratos; el downmix y
+  el remuestreo a 16 kHz son funciones **puras** (`AudioResampler`), sin I/O y
+  testeables.
+- **Fin de habla por RMS** (`SilenceDetector`), con umbral y topes
+  configurables. Un ruido más corto que `minRecordingMs` no cuenta como frase.
+- **El micrófono se cierra mientras se reproduce la respuesta**: el ciclo es
+  secuencial, así que el micrófono no escucha su propia voz.
+- **Sin permisos de tool para la voz**: el permiso del proyecto es para
+  acciones que pide el **modelo**; el micrófono lo enciende el **usuario**, con
+  un botón explícito.
+- **Un solo seam** entre la voz y el chat: `ChatViewModel.voiceAnswer`
+  (pregunta + `CompletableDeferred<String>`), completado en `sendInternal()` y
+  en `handleCommand()`. La capa de voz no toca el bucle del agente.
+- El texto del redactor se movió del composable al ViewModel
+  (`ChatViewModel.composerInput`) para que el dictado pueda escribir en él.
+- `cancel()` libera la espera de voz: el botón "Detener" también corta el chat
+  por voz.
+- Captura y reproducción con `javax.sound.sampled` (JDK): **cero dependencias
+  nuevas**.
+
+#### Ajustes y configuración
+- **Ajustes → Voz** (`VoiceSettings`): interruptor, motores de dictado y
+  locución, URL, clave, modelo, voz, velocidad, formato de captura, umbral de
+  silencio, topes de tiempo y de caracteres hablados.
+- Sección `voice` en `app-config.json`; `configVersion` **4 → 5**. La voz entra
+  **apagada** (`enabled: false`, motores `NONE`): la migración es invisible para
+  una instalación existente.
+
+### 🧪 Tests
+- **367 tests** en total (voice-api 47, backend 244, frontend 44, llm-api 32)
+  — +60.
+- `voice-api`: `WavCodecTest` (ida y vuelta del WAV, formatos raros rechazados),
+  `AudioResamplerTest` (downmix, remuestreo, audio ya en formato),
+  `SilenceDetectorTest` (el silencio cierra la frase, el ruido no cuenta),
+  `VoiceConfigTest` (validación fail-fast), `VoiceServiceTest` (elección de
+  motor), `VoiceSessionTest` (el ciclo con dobles: texto que llega, micrófono
+  que se cierra, tope de grabación, error del motor).
+- `frontend`: `ChatVoiceTest` (el texto que se habla se limpia de markdown,
+  código y enlaces).
+- `backend`: `ResolvedVoiceTest` (la voz apagada no hereda nada, la URL y la
+  clave vacías se heredan del motor activo, un endpoint local no pide clave) y
+  `ConfigMigrationTest` actualizado a la v5.
+
+### 📖 Documentación
+- `.agentes/plan-voz.md` (nuevo): análisis de lo que se reutiliza, decisiones
+  de diseño con sus alternativas descartadas, arquitectura, tareas P0–P15,
+  criterios de aceptación y riesgos.
+- `docs/ARCHITECTURE.md`: sección "Voz: dictado y chat por voz (V1)", mapa del
+  módulo `voice-api`, tabla de hilos, config v5 y requisitos opcionales.
+- `docs/TAREAS.md`: fase V1 con lo implementado y lo pendiente.
+- `README.md`: la voz como capacidad, config de ejemplo y roadmap.
+
 ## v0.12.0 (2026-10-20) — F8: cliente MCP real por stdio
 
 ### ✨ Nuevas Características
